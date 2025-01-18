@@ -10,15 +10,16 @@ from ultralytics import YOLO
 os.environ['TORCH_CUDA_ARCH_LIST'] = '8.6'
 
 SAM_MODEL_PREFIX = "sam2.1_hiera_%s"
-SAM_MODEL_PATH = "checkpoints/sam2.1/sam2.1_hiera_%s.pt"
-YOLOv11_DETECT_MODEL_PATH = "checkpoints/yolov11/yolo11%s.pt"
-YOLOv11_CLASSIFICATION_MODEL_PATH = "checkpoints/yolov11/yolo11%s-cls.pt"
+DIR_PATH = os.path.dirname(__file__)
+SAM_MODEL_PATH = DIR_PATH + "/checkpoints/sam2.1/sam2.1_hiera_%s.pt"
+YOLOv11_DETECT_MODEL_PATH = DIR_PATH + "/checkpoints/yolov11/yolo11%s.pt"
+YOLOv11_CLASSIFICATION_MODEL_PATH = DIR_PATH + "/checkpoints/yolov11/yolo11%s-cls.pt"
 CLASSIFICATION_TASK_TYPE = "classification"
 DETECTION_TASK_TYPE = "detection"
 
 
 class VisionModel:
-    def __init__(self, sam_type, yolo_type):
+    def __init__(self, sam_type='small', yolo_type='x'):
         """
         Initialize Vision Model by SAM2.1 type and YOLOv11 type.
         :param sam_type: Type of SAM to use (tiny, small, base_plus, large)
