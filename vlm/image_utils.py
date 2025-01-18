@@ -48,5 +48,5 @@ def remove_outliers_iqr(data: List) -> float:
     normal_data = data[(data >= lower_bound) & (data <= upper_bound)]
 
     # Return the average of the normal data
-    return np.mean(normal_data)
+    return float(np.mean(normal_data))
 

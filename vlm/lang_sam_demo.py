@@ -4,11 +4,10 @@ from lang_sam import LangSAM
 import matplotlib.pyplot as plt
 
 
-def show_masks_on_image(image_pil):
+def show_masks_on_image(image_pil, masks):
     # 假设 results 是从模型返回的预测结果
     # 通常包含一个 mask 列表，形状为 (H, W) 的布尔值（True 表示属于分割区域）
     # 提取第一个结果的 mask
-    masks = results[0]['masks'] # 假设 results 是一个字典列表，'mask' 包含分割掩码
     n, h, w = masks.shape
     # 将 mask 转为 NumPy 数组
     masks_np = np.array(masks).astype(np.uint8)
@@ -53,5 +52,4 @@ if __name__ == '__main__':
     image = Image.open("./assets/4cups.jpg").convert("RGB")
     text_prompt = "cup"
     results = model.predict([image], [text_prompt])
-    print(results[0]['masks'])
-    show_masks_on_image(image)
+    show_masks_on_image(image, results[0]['masks'])
