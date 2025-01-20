@@ -1,6 +1,7 @@
 from typing import List, Tuple
 
 import numpy as np
+from PIL import Image, ImageEnhance
 
 
 def center_of_mask(mask: np.ndarray) -> List[Tuple[int, int]]:
@@ -50,3 +51,10 @@ def remove_outliers_iqr(data: List) -> float:
     # Return the average of the normal data
     return float(np.mean(normal_data))
 
+
+def brightness_augment(image: Image) -> Image:
+    # 创建一个亮度增强对象
+    enhancer = ImageEnhance.Brightness(image)
+    # 设置亮度因子，值大于1.0时图像变亮，值小于1.0时图像变暗
+    brightened_image = enhancer.enhance(1.2)  # 1.5倍亮度
+    return brightened_image
