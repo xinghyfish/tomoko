@@ -2,7 +2,6 @@ import os
 from typing import Dict, List, Tuple
 
 import numpy as np
-import torch
 from PIL import Image
 from lang_sam import LangSAM
 from ultralytics import YOLO
