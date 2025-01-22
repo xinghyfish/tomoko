@@ -25,8 +25,8 @@ class ArmController:
 
     def enable_fun(self):
         """
-        Enable arm and detect status of
-        使能机械臂并检测使能状态,尝试 5s,如果使能超时则退出程序
+        Enable the robotic arm and check the enabling status.
+        Try for 5 seconds, and if the enabling times out, exit the program.
         """
         enable_flag = False
         # timeout limit in seconds
@@ -43,7 +43,7 @@ class ArmController:
                           self.piper.GetArmLowSpdInfoMsgs().motor_4.foc_status.driver_enable_status and \
                           self.piper.GetArmLowSpdInfoMsgs().motor_5.foc_status.driver_enable_status and \
                           self.piper.GetArmLowSpdInfoMsgs().motor_6.foc_status.driver_enable_status
-            print("使能状态:", enable_flag)
+            print("Enable state:", enable_flag)
             self.piper.EnableArm(7)
             self.piper.GripperCtrl(0, 1000, 0x01, 0)
             print("--------------------")
@@ -56,15 +56,14 @@ class ArmController:
             time.sleep(1)
             pass
         if elapsed_time_flag:
-            print("程序自动使能超时,退出程序")
+            print("Program auto enabling times out, EXIT the program.")
             exit(0)
 
     def joint_control(self, position: List):
-        joints = [round(position[i] * self.factor) for i in range(6)]
-        joint_6 = round(position[6] * 1000)
+        """Control Joint by 6 joints."""
+        joints = list(map(lambda x: round(x * self.factor), position))
         self.piper.MotionCtrl_2(0x01, 0x01, 30, 0x00)
         self.piper.JointCtrl(*joints)
-        self.piper.GripperCtrl(abs(joint_6), 1000, 0x01, 0)
         self.piper.MotionCtrl_2(0x01, 0x01, 30, 0x00)
         # 轮循，直到机械臂各电机运转到位，停止休眠
         while not self.is_joint_in_position(joints):
@@ -82,17 +81,35 @@ class ArmController:
 
     def end_pose_control(self, position: List):
         """Control end pose by 6 arguments."""
-        end_pos = [round(position[i] * self.factor) for i in range(6)]
-        self.piper.MotionCtrl_2(0x01, 0x00, 100, 0x00)
+        end_pos = list(map(lambda x: round(x * self.factor), position))
+        self.piper.MotionCtrl_2(0x01, 0x00, 80, 0x00)
         self.piper.EndPoseCtrl(*end_pos)
+        self.piper.MotionCtrl_2(0x01, 0x00, 80, 0x00)
         while not self.is_end_pose_in_position(end_pos):
             time.sleep(0.01)
 
     def is_end_pose_in_position(self, end_pose: List):
         current_end_pose = self.end_pose_state()
         epsilon = 1000
-        print(current_end_pose)
-        return all([abs(end_pose[i] - current_end_pose[i]) < epsilon for i in range(len(current_end_pose))])
+        return all([abs(end_pose[i] - current_end_pose[i]) < epsilon for i in range(3)])
+
+    @staticmethod
+    def is_angel_in_position(current_angle: List, desired_angle: List, epsilon: float=1000):
+        """Determine whether the rotation angle is in place"""
+        # for i in range(len(desired_angle)):
+        #     if 180000 - epsilon > desired_angle[i] > epsilon:
+        #         if abs(current_angle[i] - desired_angle[i]) > epsilon:
+        #             return False
+        #     # desired angle in range of [180 - epsilon, 180] U [0, epsilon]
+        #     elif desired_angle[i] + epsilon >= 180000:
+        #         if epsilon + desired_angle[i] - 180000 < current_angle[i] < desired_angle[i] - epsilon:
+        #             return False
+        #     else:
+        #         if desired_angle[i] + epsilon < current_angle[i] < 180000 + desired_angle[i] - epsilon:
+        #             return False
+        # return True
+        current_angle = list(map(lambda x: x if x >= 0 else x + 180000, current_angle))
+        return all(abs(current_angle[i] - desired_angle[i]) <= epsilon for i in range(3))
 
     def end_pose_state(self):
         """Get current state of end pose."""
@@ -129,11 +146,15 @@ if __name__ == '__main__':
     # time.sleep(3)
     # position = [30, 40, -10, 0, -20, 0, 0]
     # arm_controller.joint_control(position)
-    pos = [0, 0, 0, 0, 0, 0, 0]
+    arm_controller.set_grip_degree(80)
+    pos = [0, 0, 0, 0, 0, 0]
     arm_controller.joint_control(pos)
-    pos = [65, 0, 220, 0, 90, 0, 80]
-    arm_controller.end_pose_control(pos)
-    time.sleep(2)
-    pos = [0] * 7
-    arm_controller.joint_control(pos)
-    arm_controller.set_grip_degree(65)
+    # pos = [65, 0, 220, 0, 90, 0, 80]
+    # arm_controller.end_pose_control(pos)
+    # time.sleep(2)
+    # pos = [0] * 7
+    # arm_controller.joint_control(pos)
+    # arm_controller.set_grip_degree(65)
+    desired_angles = [0, 95000, 0]
+    angles = [-179500, 94600, -179800]
+    print(arm_controller.is_angel_in_position(angles, desired_angles))
