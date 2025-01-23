@@ -11,8 +11,8 @@ class ArmController:
         self.gripper_degree = 0
         self.piper = C_PiperInterface("can0")
         self.factor = 1000 # 0.001 degree --> 1 degree
-        self.current_joint = [None] * 6
         self.init_end_pose = [55, 0, 203, 0, 85, 0]
+        self.init_joint = [0, 0, 0, 0, 0, 0]
         # dir_path = os.path.dirname(__file__)
         # subprocess.run(["bash", dir_path + '/can_activate.sh', 'can0', '1000000'])
         self.init_status()
@@ -119,6 +119,7 @@ class ArmController:
     def set_grip_degree(self, degree):
         self.piper.MotionCtrl_2(0x01, 0x00, 100, 0x00)
         self.piper.GripperCtrl(abs(round(degree * self.factor)), 1000, 0x01, 0)
+        self.gripper_degree = degree
 
     @staticmethod
     def end_to_hand(end_pose: List, hand_length: float) -> List:
@@ -135,6 +136,14 @@ class ArmController:
         ny = y - hand_length * math.cos(Ry)
         nz = z - hand_length * math.cos(Rz)
         return [nx, ny, nz, Rx, Ry, Rz]
+
+    def set_zero_state(self):
+        if self.gripper_degree:
+            self.set_grip_degree(70)
+        self.joint_control(self.init_joint)
+        self.end_pose_control(self.init_end_pose)
+        self.set_grip_degree(0)
+        time.sleep(0.5)
 
 
 if __name__ == '__main__':
