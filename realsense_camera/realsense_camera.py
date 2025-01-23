@@ -50,5 +50,20 @@ class RealsenseCamera:
         return rs.rs2_deproject_pixel_to_point(depth_intrin, [x, y], dist)
 
     @staticmethod
-    def get_object_distance(x, y, depth_frame):
+    def get_pixel_distance(x, y, depth_frame):
         return depth_frame.get_distance(x, y)
+
+    def try_get_object_distance(self, x, y, depth_frame):
+        pixel_range = 10
+        distance = self.get_pixel_distance(x, y, depth_frame)
+        if distance != 0:
+            return distance
+
+        for i in range(1, pixel_range + 1):
+            for dx in range(i, -i - 1, -1):
+                for dy in range(i, -i - 1, -1):
+                    nx, ny = x + dx, y + dy
+                    distance = self.get_pixel_distance(nx, ny, depth_frame)
+                    if distance != 0.0:
+                        return distance
+        return distance
