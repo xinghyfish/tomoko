@@ -71,13 +71,14 @@ class ArmController:
 
     def is_joint_in_position(self, joints: List):
         current_joint_state = self.joint_state()
-        epsilon = 100
-        return all([abs(joints[i] - current_joint_state[i]) < epsilon for i in range(len(current_joint_state))])
+        epsilon = 1000
+        return all([abs(joints[i] - current_joint_state[i] * self.factor) < epsilon for i in range(len(current_joint_state))])
 
     def joint_state(self):
         """Get current state of joint."""
         s = self.piper.GetArmJointMsgs().joint_state
-        return [s.joint_1, s.joint_2, s.joint_3, s.joint_4, s.joint_5, s.joint_6]
+        joint = [s.joint_1, s.joint_2, s.joint_3, s.joint_4, s.joint_5, s.joint_6]
+        return [x / self.factor for x in joint]
 
     def end_pose_control(self, position: List):
         """Control end pose by 6 arguments."""
@@ -91,7 +92,7 @@ class ArmController:
     def is_end_pose_in_position(self, end_pose: List):
         current_end_pose = self.end_pose_state()
         epsilon = 1000
-        return all([abs(end_pose[i] - current_end_pose[i]) < epsilon for i in range(3)])
+        return all([abs(end_pose[i] - current_end_pose[i] * self.factor) < epsilon for i in range(3)])
 
     @staticmethod
     def is_angel_in_position(current_angle: List, desired_angle: List, epsilon: float=1000):
@@ -114,7 +115,8 @@ class ArmController:
     def end_pose_state(self):
         """Get current state of end pose."""
         s = self.piper.GetArmEndPoseMsgs().end_pose
-        return [s.X_axis, s.Y_axis, s.Z_axis, s.RX_axis, s.RY_axis, s.RZ_axis]
+        end_pose = [s.X_axis, s.Y_axis, s.Z_axis, s.RX_axis, s.RY_axis, s.RZ_axis]
+        return [x / self.factor for x in end_pose]
 
     def set_grip_degree(self, degree):
         self.piper.MotionCtrl_2(0x01, 0x00, 100, 0x00)
@@ -164,6 +166,3 @@ if __name__ == '__main__':
     # pos = [0] * 7
     # arm_controller.joint_control(pos)
     # arm_controller.set_grip_degree(65)
-    desired_angles = [0, 95000, 0]
-    angles = [-179500, 94600, -179800]
-    print(arm_controller.is_angel_in_position(angles, desired_angles))
