@@ -37,11 +37,11 @@ def get_target_index(R_g: List, T_g: List, T_c: List):
     T_g = T_g[:, np.newaxis]
     vec_hb = np.hstack((vec_hb, T_g))
     vec_hb = np.vstack((vec_hb, [0, 0, 0, 1]))
-    print(T_c)
 
     world_matrix = np.dot(vec_hb, H_cb)
     world_matrix = np.dot(world_matrix, T_c)
     target_index = world_matrix[:3]
+    print(target_index)
 
     return target_index
 
