@@ -7,15 +7,18 @@ from piper_sdk import *
 
 class ArmController:
     def __init__(self):
-        self.hand_length = 170.0
+        self.hand_length = 140.0
+        self.arm_radius = 29.0
         self.gripper_degree = 0
         self.piper = C_PiperInterface("can0")
         self.factor = 1000 # 0.001 degree --> 1 degree
-        self.init_end_pose = [55, 0, 203, 0, 85, 0]
+        self.init_end_pose = [55, 0, 203, 0, 90, 0]
         self.init_joint = [0, 0, 0, 0, 0, 0]
         # dir_path = os.path.dirname(__file__)
         # subprocess.run(["bash", dir_path + '/can_activate.sh', 'can0', '1000000'])
         self.init_status()
+        self.piper.CrashProtectionConfig(*([8] * 6))
+        self.motion_flag = False
 
     def init_status(self):
         self.piper.ConnectPort()
@@ -65,9 +68,17 @@ class ArmController:
         self.piper.MotionCtrl_2(0x01, 0x01, 30, 0x00)
         self.piper.JointCtrl(*joints)
         self.piper.MotionCtrl_2(0x01, 0x01, 30, 0x00)
-        # 轮循，直到机械臂各电机运转到位，停止休眠
+        # record current joint status
+        start_joints = self.joint_state()
+        time_elapsed = 0
         while not self.is_joint_in_position(joints):
             time.sleep(0.01)
+            time_elapsed += 1
+            if time_elapsed >= 10:
+                # after 10 iterations but still not position
+                if self.is_joint_in_position(start_joints):
+                    return False
+        return True
 
     def is_joint_in_position(self, joints: List):
         current_joint_state = self.joint_state()
@@ -86,8 +97,15 @@ class ArmController:
         self.piper.MotionCtrl_2(0x01, 0x00, 80, 0x00)
         self.piper.EndPoseCtrl(*end_pos)
         self.piper.MotionCtrl_2(0x01, 0x00, 80, 0x00)
+        start_end_pos = self.end_pose_state()
+        time_elapsed = 0
         while not self.is_end_pose_in_position(end_pos):
             time.sleep(0.01)
+            time_elapsed += 1
+            if time_elapsed >= 10:
+                if self.is_end_pose_in_position(start_end_pos):
+                    return False
+        return True
 
     def is_end_pose_in_position(self, end_pose: List):
         current_end_pose = self.end_pose_state()
@@ -143,9 +161,6 @@ class ArmController:
         if self.gripper_degree:
             self.set_grip_degree(70)
         self.joint_control(self.init_joint)
-        self.end_pose_control(self.init_end_pose)
-        self.set_grip_degree(0)
-        time.sleep(0.5)
 
 
 if __name__ == '__main__':
