@@ -67,3 +67,25 @@ class RealsenseCamera:
                     if distance != 0.0:
                         return distance
         return distance
+
+    def get_stable_depth_image(self, sample_count=8):
+        """
+        As depth image is unstable, some pixel in image can be randomly invalid but actually not in most cases.
+        Sample a few continuous frames, and compute average depth of each pixel in the sequence if valid.
+        It may be useful to 3D scene reconstruction.
+        :param sample_count: number of continuous frames to sample
+        :return: RGB image and depth stable image
+        """
+        color_image, depth_image, _, _, _ = self.get_aligned_images()
+        stable_depth_image, valid_pixel_counter = [np.zeros_like(depth_image).astype(np.float32)] * 2
+
+        for i in range(sample_count):
+            _, depth_image, _, _, _ = self.get_aligned_images()
+            # valid pixels
+            mask = depth_image > 0
+            stable_depth_image[mask] += depth_image
+            valid_pixel_counter[mask] += 1
+
+        valid_mask = valid_pixel_counter > 0
+        stable_depth_image[valid_mask] /= valid_pixel_counter[valid_mask]
+        return color_image, stable_depth_image
