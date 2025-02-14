@@ -1,4 +1,3 @@
-import math
 import time
 from typing import List
 
@@ -17,7 +16,7 @@ class ArmController:
         # dir_path = os.path.dirname(__file__)
         # subprocess.run(["bash", dir_path + '/can_activate.sh', 'can0', '1000000'])
         self.init_status()
-        self.piper.CrashProtectionConfig(*([8] * 6))
+        # self.piper.CrashProtectionConfig(*([4] * 6))
         self.motion_flag = False
 
     def init_status(self):
@@ -65,25 +64,25 @@ class ArmController:
     def joint_control(self, position: List):
         """Control Joint by 6 joints."""
         joints = list(map(lambda x: round(x * self.factor), position))
+        start_joints = self.joint_state()
         self.piper.MotionCtrl_2(0x01, 0x01, 30, 0x00)
         self.piper.JointCtrl(*joints)
         self.piper.MotionCtrl_2(0x01, 0x01, 30, 0x00)
         # record current joint status
-        start_joints = self.joint_state()
         time_elapsed = 0
-        while not self.is_joint_in_position(joints):
-            time.sleep(0.01)
+        while not self.is_joint_in_position(position):
             time_elapsed += 1
             if time_elapsed >= 10:
                 # after 10 iterations but still not position
                 if self.is_joint_in_position(start_joints):
+                    print("Joint parameters are incorrect.")
                     return False
+            time.sleep(0.1)
         return True
 
-    def is_joint_in_position(self, joints: List):
+    def is_joint_in_position(self, joints: List, error=1.0):
         current_joint_state = self.joint_state()
-        epsilon = 1000
-        return all([abs(joints[i] - current_joint_state[i] * self.factor) < epsilon for i in range(len(current_joint_state))])
+        return all([abs(joints[i] - current_joint_state[i]) < error for i in range(len(current_joint_state))])
 
     def joint_state(self):
         """Get current state of joint."""
@@ -91,15 +90,26 @@ class ArmController:
         joint = [s.joint_1, s.joint_2, s.joint_3, s.joint_4, s.joint_5, s.joint_6]
         return [x / self.factor for x in joint]
 
-    def end_pose_control(self, position: List):
-        """Control end pose by 6 arguments."""
+    def end_pose_control(self, position: List, move_mode=0x00, move_speed_rate=80) -> bool:
+        """
+        Control end pose by 6 arguments.
+        In this case, [Rx, Ry, Rz] describes the rotation angle of the coordinate system of the arm.
+        The rotation order is (by pixel): X -> Y-> Z. NEVER CHANGE THE ORDER.
+        :param position: position including [x, y, z, Rx, Ry, Rz]
+        :param move_mode:
+            - 0x00 position move
+            - 0x02 linear move
+        :param move_speed_rate: rate of move [0, 100]
+        :return: True if end pose control is successful else False
+        """
+        assert move_mode in [0x00, 0x02]
         end_pos = list(map(lambda x: round(x * self.factor), position))
-        self.piper.MotionCtrl_2(0x01, 0x00, 80, 0x00)
-        self.piper.EndPoseCtrl(*end_pos)
-        self.piper.MotionCtrl_2(0x01, 0x00, 80, 0x00)
         start_end_pos = self.end_pose_state()
+        self.piper.MotionCtrl_2(0x01, move_mode, move_speed_rate, 0x00)
+        self.piper.EndPoseCtrl(*end_pos)
+        self.piper.MotionCtrl_2(0x01, move_mode, move_speed_rate, 0x00)
         time_elapsed = 0
-        while not self.is_end_pose_in_position(end_pos):
+        while not self.is_end_pose_in_position(position):
             time.sleep(0.01)
             time_elapsed += 1
             if time_elapsed >= 10:
@@ -107,28 +117,15 @@ class ArmController:
                     return False
         return True
 
-    def is_end_pose_in_position(self, end_pose: List):
+    def is_end_pose_in_position(self, end_pose: List, error: float=1.0):
         current_end_pose = self.end_pose_state()
-        epsilon = 1000
-        return all([abs(end_pose[i] - current_end_pose[i] * self.factor) < epsilon for i in range(3)])
+        return all([abs(end_pose[i] - current_end_pose[i]) < error for i in range(3)])
 
-    @staticmethod
-    def is_angel_in_position(current_angle: List, desired_angle: List, epsilon: float=1000):
+    def is_angel_in_position(self, joints: List, error: float=1.0):
         """Determine whether the rotation angle is in place"""
-        # for i in range(len(desired_angle)):
-        #     if 180000 - epsilon > desired_angle[i] > epsilon:
-        #         if abs(current_angle[i] - desired_angle[i]) > epsilon:
-        #             return False
-        #     # desired angle in range of [180 - epsilon, 180] U [0, epsilon]
-        #     elif desired_angle[i] + epsilon >= 180000:
-        #         if epsilon + desired_angle[i] - 180000 < current_angle[i] < desired_angle[i] - epsilon:
-        #             return False
-        #     else:
-        #         if desired_angle[i] + epsilon < current_angle[i] < 180000 + desired_angle[i] - epsilon:
-        #             return False
-        # return True
-        current_angle = list(map(lambda x: x if x >= 0 else x + 180000, current_angle))
-        return all(abs(current_angle[i] - desired_angle[i]) <= epsilon for i in range(3))
+        current_joints = self.joint_state()
+        current_angle = list(map(lambda x: x if x >= 0 else x + 180, current_joints))
+        return all(abs(current_angle[i] - joints[i]) <= error for i in range(3))
 
     def end_pose_state(self):
         """Get current state of end pose."""
@@ -141,26 +138,38 @@ class ArmController:
         self.piper.GripperCtrl(abs(round(degree * self.factor)), 1000, 0x01, 0)
         self.gripper_degree = degree
 
-    @staticmethod
-    def end_to_hand(end_pose: List, hand_length: float) -> List:
-        """
-        由于手眼标定得到的是机械臂末端位姿，而这个位置实际上是我们希望夹取点的位置。
-        因此，我们需要根据夹取点和末端的几何关系，对手眼标定后的末端位姿进行调整，使得标定的坐标和夹取点一致，
-        调整后的末端位姿作为机械臂末端输入从而进行控制。
-        :param end_pose: [x, y, z, Rx, Ry, Rz] 末端位姿六元组
-        :param hand_length: 末端到夹取点的距离
-        :return: 将当前末端位姿设置为夹取点的实际末端位姿六元组
-        """
-        x, y, z, Rx, Ry, Rz = end_pose
-        nx = x - hand_length * math.cos(Rx)
-        ny = y - hand_length * math.cos(Ry)
-        nz = z - hand_length * math.cos(Rz)
-        return [nx, ny, nz, Rx, Ry, Rz]
-
     def set_zero_state(self):
         if self.gripper_degree:
             self.set_grip_degree(70)
         self.joint_control(self.init_joint)
+
+    def lift(self, height) -> bool:
+        """
+        Lift the grasped object. Positive to up and negative to down.
+        :param height: distance to lift.
+        :return: True if lift is successful else False
+        """
+        x, y, z, Rx, Ry, Rz = self.end_pose_state()
+        z += height
+        return self.end_pose_control([x, y, z, Rx, Ry, Rz], move_mode=0x2, move_speed_rate=30)
+
+    def snake_observe(self):
+        """
+        Make the pose of the arm like snake so that camera can observe the whole object.
+        :return: True if reachable else False
+        """
+        snake_joints = [0, 40, -10, 0, -20, 45, 0]
+        return self.joint_control(snake_joints)
+
+    def bottom_turn(self, degree):
+        """
+        Turn the bottom joint of the arm.
+        :param degree: angle in degree
+        :return: If the turing is in valid range.
+        """
+        current_joints = self.joint_state()
+        current_joints[0] = degree
+        return self.joint_control(current_joints)
 
 
 if __name__ == '__main__':
@@ -173,7 +182,7 @@ if __name__ == '__main__':
     # position = [30, 40, -10, 0, -20, 0, 0]
     # arm_controller.joint_control(position)
     arm_controller.set_grip_degree(80)
-    pos = [0, 0, 0, 0, 0, 0]
+    pos = [0] * 6
     arm_controller.joint_control(pos)
     # pos = [65, 0, 220, 0, 90, 0, 80]
     # arm_controller.end_pose_control(pos)
