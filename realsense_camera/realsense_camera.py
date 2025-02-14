@@ -15,9 +15,7 @@ class RealsenseCamera:
         # refer to `realsense-viewer` or `rs-sensor-control` for more config mode
         config.enable_stream(rs.stream.depth, *depth_mode)
         config.enable_stream(rs.stream.color, *color_mode)
-
-        pipeline_wrapper = rs.pipeline_wrapper(self.pipeline)
-        pipeline_profile = config.resolve(pipeline_wrapper)
+        rs.pipeline_wrapper(self.pipeline)
 
         # Start streaming
         self.pipeline.start(config)
