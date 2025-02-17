@@ -1,6 +1,7 @@
 from typing import Dict, Tuple
 
 import PIL
+import cv2
 import pyrealsense2 as rs
 import numpy as np
 from vlm import image_utils
@@ -8,14 +9,13 @@ from PIL.Image import Image
 
 
 class RealsenseCamera:
-    def __init__(self, color_mode=(640, 480, rs.format.rgb8, 15),
-                 depth_mode=(640, 480, rs.format.z16, 15)):
+    def __init__(self, color_mode=(640, 480, rs.format.rgb8, 30),
+                 depth_mode=(640, 480, rs.format.z16, 30)):
         self.pipeline = rs.pipeline()
         config = rs.config()
         # refer to `realsense-viewer` or `rs-sensor-control` for more config mode
         config.enable_stream(rs.stream.depth, *depth_mode)
         config.enable_stream(rs.stream.color, *color_mode)
-        rs.pipeline_wrapper(self.pipeline)
 
         # Start streaming
         self.pipeline.start(config)
@@ -36,12 +36,10 @@ class RealsenseCamera:
         color_frame = aligned_frames.get_color_frame()
         # Convert images to numpy arrays
         depth_image = np.asanyarray(depth_frame.get_data())
-        color_image = image_utils.brightness_augment(
-            PIL.Image.fromarray(np.asanyarray(color_frame.get_data()))
-        )
+        color_image = np.asanyarray(color_frame.get_data())
         depth_intrin = depth_frame.profile.as_video_stream_profile().intrinsics
         # Show images
-        return color_image, depth_image, depth_intrin, np.asanyarray(color_frame.get_data()), depth_frame
+        return color_image, depth_image, depth_intrin, depth_frame
 
     @staticmethod
     def get_coordinate_3d(x, y, dist, depth_intrin):
@@ -74,11 +72,11 @@ class RealsenseCamera:
         :param sample_count: number of continuous frames to sample
         :return: RGB image and depth stable image
         """
-        color_image, depth_image, _, _, _ = self.get_aligned_images()
+        color_image, depth_image, _, _ = self.get_aligned_images()
         stable_depth_image, valid_pixel_counter = [np.zeros_like(depth_image).astype(np.float32)] * 2
 
         for i in range(sample_count):
-            _, depth_image, _, _, _ = self.get_aligned_images()
+            _, depth_image, _, _ = self.get_aligned_images()
             # valid pixels
             mask = depth_image > 0
             stable_depth_image[mask] += depth_image
