@@ -1,12 +1,16 @@
 import math
 import time
 
+import PIL
+import numpy as np
+from PIL import Image
 from numpy.ma.core import arctan
 
 from realsense_camera.realsense_camera import RealsenseCamera
 from robot_arm import eye2arm_transform
 from robot_arm.arm_controller import ArmController
 from vlm import image_utils
+from vlm.image_utils import mask_diff, center_of_mask
 from vlm.lang_sam_demo import show_masks_on_image
 from vlm.vision_model import VisionModel
 
@@ -21,10 +25,9 @@ class Jarvis:
         self.realsense_camera = RealsenseCamera()
         self.grasp_pose = {
             "black cup": [28, 90],
-            "red cup on left": [28, 90],
-            "yellow cup on left": [22.5, 90],
-            "white cup on left": [28, 90],
-            "black cup on left": [28, 90],
+            "red cup": [28, 90],
+            "yellow cup": [22.5, 90],
+            "silver cup": [28, 90],
             "teapot": [80.0, 100],
         }
 
@@ -37,17 +40,17 @@ class Jarvis:
         # RealSense camera will return 0 when the depth is invalid (undetectable/too far/too near)
         invalid_count, invalid_threshold = 0, 4
 
-        depth_intrin, depth_frame = None, None
+        color_image, depth_intrin, depth_image, depth_frame = [None] * 4
         objects_position = []
         while invalid_count < invalid_threshold and distance == 0.0:
             objects_position.clear()
-            color_image, depth_image, depth_intrin, color_frames, depth_frame = self.realsense_camera.get_aligned_images()
-            masks = self.vision_model.segment(color_image, text_prompt)
+            color_image, depth_image, depth_intrin, depth_frame = self.realsense_camera.get_aligned_images()
+            masks = self.vision_model.segment(PIL.Image.fromarray(color_image), text_prompt)
             show_masks_on_image(color_image, masks)
-            for i, (x, y) in enumerate(image_utils.center_of_mask(masks)):
+            for i, (y, x) in enumerate(image_utils.center_of_mask(masks)):
                 distance = self.realsense_camera.get_pixel_distance(x, y, depth_frame)
                 if distance:
-                    objects_position.append((x, y, distance))
+                    objects_position.append((x, y, distance, masks[i]))
             if objects_position:
                 break
             else:
@@ -60,7 +63,7 @@ class Jarvis:
                 print("Unable to grasp target object.")
                 return []
 
-        return objects_position, depth_intrin
+        return objects_position, color_image, depth_image, depth_intrin, depth_frame
 
     def grasp(self, x, y, distance, depth_intrin, text_prompt):
         """
@@ -83,7 +86,6 @@ class Jarvis:
         # but here we temporarily use a dict
         grasp = self.grasp_pose[text_prompt]
         end_pose = self.end_pose_transform(*target_index, *grasp)
-        print("End pose = ", end_pose)
         flag = self.arm_controller.end_pose_control(list(end_pose))
         if not flag:
             print("Segment may be failed, or object is unreachable. Please check again.")
@@ -126,18 +128,50 @@ if __name__ == '__main__':
     # jarvis.set_zero()
     jarvis.arm_controller.end_pose_control(jarvis.arm_controller.init_end_pose)
     # pos = [45, 10, -35, 0, 60, 0]
-    pos = [35, 10, -35, 0, 60, 0]
-    jarvis.arm_controller.joint_control(pos)
+    # pos = [0, 10, -35, 0, 60, 0]
+    # jarvis.arm_controller.joint_control(pos)
     time.sleep(1)
-    prompt = "white cup on left"
-    obj_lst, depth_intrin = jarvis.detect(prompt)
-    xe, ye, dis = obj_lst[0]
-    time.sleep(1)
+    prompt1 = "yellow circle in teapot"
+    obj_lst, color_image, depth_image, depth_intrin, depth_frame = jarvis.detect(prompt1)
+    xe, ye, dis, mask1 = obj_lst[0]
+    print(xe, ye, dis)
+    # time.sleep(1)
+    # prompt2 = "black teapot"
+    # 保存为图片
+    # color_image.save('output_image.png')
+    teapot_depth = depth_image * mask1
+    replaced_teapot_depth = np.where(teapot_depth == 0, np.max(teapot_depth), teapot_depth)
+    show_masks_on_image(color_image, np.where(teapot_depth > 0, 1, 0)[np.newaxis, :])
+    # 找到最小值的索引
+    min_index = np.unravel_index(np.argmin(replaced_teapot_depth), replaced_teapot_depth.shape)
+    min_depth = teapot_depth[min_index]
+    print("最小值的坐标:", min_index)
+    print("最小值:", min_depth)
+    count = np.count_nonzero(teapot_depth == min_depth)
+    print(count)
+    min_depth = np.where(abs(teapot_depth - min_depth) <= 20, 1, 0)
+    show_masks_on_image(color_image, min_depth[np.newaxis, :])
+    y, x = center_of_mask(min_depth[np.newaxis, :])[0]
+    distance = jarvis.realsense_camera.try_get_object_distance(x, y, depth_frame)
+    jarvis.grasp(x, y, distance, depth_intrin, "teapot")
+
+    # xe, ye, dis, mask2 = obj_lst[0]
+    # print(xe, ye, dis)
+    # prompt2 = "yellow circle"
+    # obj_lst, color_image, depth_frame, depth_intrin = jarvis.detect(prompt2)
+    # wooden_mask = mask_diff(mask1, mask2)[np.newaxis, :]
+    # show_masks_on_image(color_image, wooden_mask)
+    # y, x = image_utils.center_of_mask(wooden_mask)
+    # distance = jarvis.realsense_camera.get_pixel_distance(x, y, depth_frame)
+    # prompt3 = "teapot"
+    # jarvis.grasp(x, y, distance, depth_intrin, prompt3)
+
+    # time.sleep(1)
     # pos = [40, 10, -35, 0, 30, 0]
     # jarvis.arm_controller.joint_control(pos)
     # jarvis.set_zero()
-    time.sleep(1)
-    jarvis.grasp(xe, ye, dis, depth_intrin, prompt)
+    # time.sleep(1)
+    # jarvis.grasp(xe, ye, dis, depth_intrin, prompt1)
     jarvis.arm_controller.lift(100)
     time.sleep(2)
     jarvis.arm_controller.lift(-100)
