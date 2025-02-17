@@ -182,6 +182,9 @@ if __name__ == '__main__':
     # position = [30, 40, -10, 0, -20, 0, 0]
     # arm_controller.joint_control(position)
     arm_controller.set_grip_degree(80)
+    time.sleep(2)
+    arm_controller.lift(100)
+    time.sleep(1)
     pos = [0] * 6
     arm_controller.joint_control(pos)
     # pos = [65, 0, 220, 0, 90, 0, 80]
