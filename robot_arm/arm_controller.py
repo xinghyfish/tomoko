@@ -171,6 +171,16 @@ class ArmController:
         current_joints[0] = degree
         return self.joint_control(current_joints)
 
+    def wrist_roll(self, angle):
+        """
+        Turn the last joint (like wrist of arm).
+        :param angle: in degree
+        :return: if the wrist is in valid range.
+        """
+        current_joints = self.joint_state()
+        current_joints[-1] += angle
+        return self.joint_control(current_joints)
+
 
 if __name__ == '__main__':
     arm_controller = ArmController()
