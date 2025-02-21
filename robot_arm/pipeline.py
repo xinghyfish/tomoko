@@ -1,9 +1,18 @@
+import logging
+import time
+
 from robot_arm.command import Command
 
+# 配置日志记录
+logging.basicConfig(
+    level=logging.INFO,  # 设置日志级别为 DEBUG
+    format='%(asctime)s - %(levelname)s - %(message)s',
+)
 
 class Pipeline:
     """Implementation of pipeline pattern."""
-    def __init__(self):
+    def __init__(self, label: str):
+        self.label = label
         self.commands = []
 
     def add_command(self, command: Command):
@@ -17,10 +26,30 @@ class Pipeline:
     def run(self):
         """Perform each command.execute() in order."""
         for command in self.commands:
-            command.execute()
+            flag = command.execute()
+            time.sleep(1)
+            if flag:
+                logging.info(f"{command} execute done.")
+            else:
+                logging.error(f"{command} execute failed.")
+                return False
+        logging.info(f"Pipeline [{self.label}] execution is done.")
+        return True
 
     def undo(self):
         """Perform each command.undo() in reversed order."""
-        self.commands.pop()
         for command in reversed(self.commands):  # 逆序执行 undo
-            command.undo()
+            flag = command.undo()
+            time.sleep(1)
+            if flag:
+                logging.info(f"{command} undo done.")
+            else:
+                logging.error(f"{command} undo failed.")
+                return False
+        logging.info(f"Pipeline [{self.label}] undo is done.")
+        return True
+
+    def __str__(self):
+        msg = f"[Pipeline] {self.label}\n"
+        for command in self.commands:
+            msg += f"\t{command}\n"
