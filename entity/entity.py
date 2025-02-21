@@ -38,7 +38,7 @@ class TeaCan(Entity):
     def __init__(self):
         radius, polar_angle = 35, 90
         super().__init__(radius, polar_angle)
-        self.height = 54
+        self.height = 24
 
 
 class Teapot(Entity):
