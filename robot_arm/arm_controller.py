@@ -7,7 +7,7 @@ from piper_sdk import *
 class ArmController:
     def __init__(self):
         self.hand_length = 140.0
-        self.arm_radius = 29.0
+        self.arm_radius = 25.0
         self.gripper_degree = 0
         self.piper = C_PiperInterface("can0")
         self.factor = 1000 # 0.001 degree --> 1 degree
@@ -61,13 +61,13 @@ class ArmController:
             print("Program auto enabling times out, EXIT the program.")
             exit(0)
 
-    def joint_control(self, position: List):
+    def joint_control(self, position: List, move_mode=0x1, move_speed_rate=30):
         """Control Joint by 6 joints."""
         joints = list(map(lambda x: round(x * self.factor), position))
         start_joints = self.joint_state()
-        self.piper.MotionCtrl_2(0x01, 0x01, 30, 0x00)
+        self.piper.MotionCtrl_2(0x01, move_mode, move_speed_rate, 0x00)
         self.piper.JointCtrl(*joints)
-        self.piper.MotionCtrl_2(0x01, 0x01, 30, 0x00)
+        self.piper.MotionCtrl_2(0x01, move_mode, move_speed_rate, 0x00)
         # record current joint status
         time_elapsed = 0
         while not self.is_joint_in_position(position):
@@ -136,12 +136,14 @@ class ArmController:
     def set_grip_degree(self, degree):
         self.piper.MotionCtrl_2(0x01, 0x00, 100, 0x00)
         self.piper.GripperCtrl(abs(round(degree * self.factor)), 1000, 0x01, 0)
+        self.piper.MotionCtrl_2(0x01, 0x00, 100, 0x00)
         self.gripper_degree = degree
+        return True
 
     def set_zero_state(self):
         if self.gripper_degree:
             self.set_grip_degree(70)
-        self.joint_control(self.init_joint)
+        self.joint_control(self.init_joint, move_mode=0x0, move_speed_rate=20)
 
     def lift(self, height) -> bool:
         """
@@ -168,7 +170,7 @@ class ArmController:
         :return: If the turing is in valid range.
         """
         current_joints = self.joint_state()
-        current_joints[0] = degree
+        current_joints[0] += degree
         return self.joint_control(current_joints)
 
     def wrist_roll(self, angle):
@@ -184,22 +186,9 @@ class ArmController:
 
 if __name__ == '__main__':
     arm_controller = ArmController()
-    # position = [30, 40, -10, 0, -20, 0, 0]
-    # arm_controller.joint_control(position)
-    # position = [30, 40, -10, 0, -20, 45, 0]
-    # arm_controller.joint_control(position)
-    # time.sleep(3)
-    # position = [30, 40, -10, 0, -20, 0, 0]
-    # arm_controller.joint_control(position)
     arm_controller.set_grip_degree(80)
     time.sleep(2)
     arm_controller.lift(100)
     time.sleep(1)
     pos = [0] * 6
     arm_controller.joint_control(pos)
-    # pos = [65, 0, 220, 0, 90, 0, 80]
-    # arm_controller.end_pose_control(pos)
-    # time.sleep(2)
-    # pos = [0] * 7
-    # arm_controller.joint_control(pos)
-    # arm_controller.set_grip_degree(65)

@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
+from sympy import andre
+
 
 class Command(ABC):
     def __init__(self, tomoko):
@@ -24,10 +26,13 @@ class BottomTurnCommand(Command):
         self.angle = args[0]
 
     def execute(self):
-        self.arm_controller.bottom_turn(self.angle)
+        return self.arm_controller.bottom_turn(self.angle)
 
     def undo(self):
-        self.arm_controller.bottom_turn(-self.angle)
+        return self.arm_controller.bottom_turn(-self.angle)
+
+    def __str__(self):
+        return f"Command(Bottom Turn) - {self.angle} degree"
 
 
 class WristRollCommand(Command):
@@ -36,10 +41,13 @@ class WristRollCommand(Command):
         self.angle = args[0]
 
     def execute(self):
-        self.arm_controller.wrist_roll(self.angle)
+        return self.arm_controller.wrist_roll(self.angle)
 
     def undo(self):
-        self.arm_controller.wrist_roll(-self.angle)
+        return self.arm_controller.wrist_roll(-self.angle)
+
+    def __str__(self):
+        return f"Command(Wrist Roll) - {self.angle} degree"
 
 
 class LiftMoveCommand(Command):
@@ -48,21 +56,68 @@ class LiftMoveCommand(Command):
         self.height = args[0]
 
     def execute(self):
-        print("lift: ", self.arm_controller.lift(self.height))
+        return self.arm_controller.lift(self.height)
 
     def undo(self):
-        self.arm_controller.lift(-self.height)
+        return self.arm_controller.lift(-self.height)
+
+    def __str__(self):
+        return f"Command(Lift) - {self.height} mm"
 
 
 class GripperCloseCommand(Command):
     def __init__(self, tomoko):
         super().__init__(tomoko)
+        self.close_flag = True
 
     def execute(self):
-        self.arm_controller.set_grip_degree(0)
+        self.close_flag = True
+        return self.arm_controller.set_grip_degree(0)
 
     def undo(self):
-        self.arm_controller.set_grip_degree(70)
+        self.close_flag = False
+        return self.arm_controller.set_grip_degree(70)
+
+    def __str__(self):
+        return f"Command(GripperClose)"
+
+
+class GripperOpenCommand(Command):
+    def __init__(self, tomoko):
+        super().__init__(tomoko)
+        self.open_flag = True
+
+    def execute(self):
+        self.open_flag = True
+        return self.arm_controller.set_grip_degree(70)
+
+    def undo(self):
+        self.open_flag = False
+        return self.arm_controller.set_grip_degree(0)
+
+    def __str__(self):
+        return f"Command(GripperOpen)"
+
+
+class GraspCommand(Command):
+    def __init__(self, tomoko, target, end_pose):
+        super().__init__(tomoko)
+        self.target = target
+        self.end_pose = end_pose
+
+    def execute(self):
+        return self.arm_controller.set_grip_degree(70) and \
+                self.arm_controller.end_pose_control(self.end_pose) and \
+                self.arm_controller.set_grip_degree(0)
+
+    def undo(self):
+        return self.arm_controller.set_grip_degree(0) and \
+            self.arm_controller.end_pose_control(self.end_pose) and \
+            self.arm_controller.set_grip_degree(70)
+
+    def __str__(self):
+        return f"Command(Grasp) - {self.target}"
+
 
 
 class EndPoseMoveCommand(Command):
@@ -74,10 +129,13 @@ class EndPoseMoveCommand(Command):
         self.move_speed_rate = args[2]
 
     def execute(self):
-        print("\n\nmove success?", self.arm_controller.end_pose_control(self.end_pose, self.move_mode, self.move_speed_rate))
+        return self.arm_controller.end_pose_control(self.end_pose, self.move_mode, self.move_speed_rate)
 
     def undo(self):
-        self.execute()
+        return self.execute()
+
+    def __str__(self):
+        return f"Command(End Pose) - [{self.end_pose}, {self.move_mode}, {self.move_speed_rate}]"
 
 
 class SetZeroCommand(Command):
@@ -85,9 +143,11 @@ class SetZeroCommand(Command):
         super().__init__(tomoko)
 
     def execute(self):
-        height = 50
-        self.arm_controller.lift(height)
-        self.arm_controller.set_zero_state()
+        return self.arm_controller.lift(50) and \
+            self.arm_controller.end_pose_control(self.arm_controller.init_end_pose)
 
     def undo(self):
-        pass
+        return self.execute()
+
+    def __str__(self):
+        return f"Command(Set Zero State)"
