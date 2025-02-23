@@ -1,3 +1,4 @@
+import time
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
@@ -65,40 +66,6 @@ class LiftMoveCommand(Command):
         return f"Command(Lift) - {self.height} mm"
 
 
-class GripperCloseCommand(Command):
-    def __init__(self, tomoko):
-        super().__init__(tomoko)
-        self.close_flag = True
-
-    def execute(self):
-        self.close_flag = True
-        return self.arm_controller.set_grip_degree(0)
-
-    def undo(self):
-        self.close_flag = False
-        return self.arm_controller.set_grip_degree(70)
-
-    def __str__(self):
-        return f"Command(GripperClose)"
-
-
-class GripperOpenCommand(Command):
-    def __init__(self, tomoko):
-        super().__init__(tomoko)
-        self.open_flag = True
-
-    def execute(self):
-        self.open_flag = True
-        return self.arm_controller.set_grip_degree(70)
-
-    def undo(self):
-        self.open_flag = False
-        return self.arm_controller.set_grip_degree(0)
-
-    def __str__(self):
-        return f"Command(GripperOpen)"
-
-
 class GraspCommand(Command):
     def __init__(self, tomoko, target, end_pose):
         super().__init__(tomoko)
@@ -106,18 +73,23 @@ class GraspCommand(Command):
         self.end_pose = end_pose
 
     def execute(self):
-        return self.arm_controller.set_grip_degree(70) and \
-                self.arm_controller.end_pose_control(self.end_pose) and \
-                self.arm_controller.set_grip_degree(0)
+        gripper_open = self.arm_controller.set_grip_degree(70)
+        time.sleep(1)
+        end_pose_control = self.arm_controller.end_pose_control(self.end_pose)
+        time.sleep(1)
+        gripper_close = self.arm_controller.set_grip_degree(0)
+        return all([gripper_open, end_pose_control, gripper_close])
 
     def undo(self):
-        return self.arm_controller.set_grip_degree(0) and \
-            self.arm_controller.end_pose_control(self.end_pose) and \
-            self.arm_controller.set_grip_degree(70)
+        gripper_close = self.arm_controller.set_grip_degree(0)
+        time.sleep(1)
+        end_pose_control = self.arm_controller.end_pose_control(self.end_pose, move_mode=0x2)
+        time.sleep(1)
+        gripper_open = self.arm_controller.set_grip_degree(70)
+        return all([gripper_close, end_pose_control, gripper_open])
 
     def __str__(self):
         return f"Command(Grasp) - {self.target}"
-
 
 
 class EndPoseMoveCommand(Command):
@@ -135,19 +107,21 @@ class EndPoseMoveCommand(Command):
         return self.execute()
 
     def __str__(self):
-        return f"Command(End Pose) - [{self.end_pose}, {self.move_mode}, {self.move_speed_rate}]"
+        return f"Command(End Pose) - [{self.end_pose}]"
 
 
-class SetZeroCommand(Command):
-    def __init__(self, tomoko):
+class JointControlCommand(Command):
+    def __init__(self, tomoko, *args):
         super().__init__(tomoko)
+        assert len(args) == 2
+        self.joints = args[0]
+        self.move_speed_rate = args[1]
 
     def execute(self):
-        return self.arm_controller.lift(50) and \
-            self.arm_controller.end_pose_control(self.arm_controller.init_end_pose)
+        return self.arm_controller.joint_control(self.joints, move_speed_rate=self.move_speed_rate)
 
     def undo(self):
         return self.execute()
 
     def __str__(self):
-        return f"Command(Set Zero State)"
+        return f"Command(Joints) - [{self.joints}]"
