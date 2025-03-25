@@ -55,4 +55,20 @@ class Teapot(Entity):
     def __init__(self):
         radius, polar_angle = 80, 110
         super().__init__(radius, polar_angle)
-        self.inner_radius = 44
+        self.inner_radius = 40
+
+
+class Faucet(Entity):
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
+            with cls._lock:
+                if not cls._instance:
+                    cls._instance = super(Faucet, cls).__new__(cls)
+        return cls._instance
+
+    def __init__(self):
+        radius, polar_angle = 37, 110
+        super().__init__(radius, polar_angle)

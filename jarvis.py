@@ -2,6 +2,7 @@ import math
 import time
 
 import PIL
+import numpy as np
 from PIL import Image
 from numpy.ma.core import arctan
 
@@ -39,12 +40,14 @@ class Jarvis:
         while invalid_count < invalid_threshold and distance == 0.0:
             objects_position.clear()
             color_image, depth_image, depth_intrin, depth_frame = self.realsense_camera.get_aligned_images()
-            masks = self.vision_model.segment(PIL.Image.fromarray(color_image), text_prompt)
+            results = self.vision_model.segment(PIL.Image.fromarray(color_image), text_prompt)
+            masks, boxes = results['masks'], results['boxes']
+
             show_masks_on_image(PIL.Image.fromarray(color_image), masks)
             for i, (y, x) in enumerate(image_utils.center_of_mask(masks)):
                 distance = self.realsense_camera.get_pixel_distance(x, y, depth_frame)
                 if distance:
-                    objects_position.append((x, y, distance, masks[i]))
+                    objects_position.append((x, y, distance, masks[i], boxes))
             if objects_position:
                 break
             else:
