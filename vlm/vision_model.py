@@ -1,7 +1,6 @@
 import os
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
 
-import numpy as np
 from PIL import Image
 from lang_sam import LangSAM
 from ultralytics import YOLO
@@ -34,12 +33,12 @@ class VisionModel:
         self.yolo_detect = YOLO(yolo_detect_model_path, task=DETECTION_TASK_TYPE)
         self.yolo_classification = YOLO(yolo_cls_model_path, task=CLASSIFICATION_TASK_TYPE)
 
-    def segment(self, image: Image, text_prompt: str) -> np.ndarray:
+    def segment(self, image: Image, text_prompt: str) -> dict[str, Any]:
         results = self.lang_sam.predict([image], [text_prompt])
         # results.shape == (n, h, w), where n == #objects(in text prompt)
         assert 1 == len(results)
-        masks = results[0]['masks']
-        return masks
+        result = results[0]
+        return result
 
     def detect(self, image: Image) -> List[Dict]:
         results = self.yolo_detect(source=image)
@@ -119,7 +118,7 @@ class VisionModel:
         :param expected_number: expected number of the scene
         :return:
         """
-        masks = self.segment(image, text_prompt)
+        masks = self.segment(image, text_prompt)['masks']
         yolo_count = self.count(image, category)
         if yolo_count < expected_number:
             return False
