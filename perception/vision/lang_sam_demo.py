@@ -48,8 +48,13 @@ def show_masks_on_image(image_pil, masks):
 
 
 if __name__ == '__main__':
-    model = LangSAM("sam2.1_hiera_small", "checkpoints/sam2.1/sam2.1_hiera_small.pt")
-    image = Image.open("./assets/4cups.jpg").convert("RGB")
-    text_prompt = "cup"
+    model = LangSAM("sam2.1_hiera_small", "../checkpoints/sam2.1/sam2.1_hiera_small.pt")
+    image = Image.open("../assets/3.jpg").convert("RGB")
+    # text_prompt = "handle"
+    # text_prompt = "top small ball"
+    # text_prompt = "small black rectangle on the bottom"
+    # text_prompt = "small black rectangle on the bottom"
+    text_prompt = "road curb"
     results = model.predict([image], [text_prompt])
+    print(results)
     show_masks_on_image(image, results[0]['masks'])

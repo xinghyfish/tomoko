@@ -3,11 +3,11 @@ from typing import List
 
 from piper_sdk import *
 
+hand_length = 140.0
+arm_radius = 25.0
 
 class ArmController:
     def __init__(self):
-        self.hand_length = 140.0
-        self.arm_radius = 25.0
         self.gripper_degree = 0
         self.piper = C_PiperInterface("can0")
         self.factor = 1000 # 0.001 degree --> 1 degree

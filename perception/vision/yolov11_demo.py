@@ -1,7 +1,7 @@
 from ultralytics import YOLO
 
-yolo = YOLO("checkpoints/yolov11/yolo11x.pt", task="detect")
-result = yolo(source="./assets/bottle_jotaro.jpg", save=True)
+yolo = YOLO("../checkpoints/yolov11/yolo11x.pt", task="detect")
+result = yolo(source="./assets/teacups.jpg", save=True)
 
 for result in result:
     boxes = result.boxes

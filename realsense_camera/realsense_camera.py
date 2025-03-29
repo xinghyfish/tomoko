@@ -1,11 +1,7 @@
-from typing import Dict, Tuple
+from typing import Tuple
 
-import PIL
-import cv2
 import pyrealsense2 as rs
 import numpy as np
-from vlm import image_utils
-from PIL.Image import Image
 
 
 class RealsenseCamera:

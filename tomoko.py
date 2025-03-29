@@ -5,14 +5,15 @@ import time
 import numpy as np
 from numpy.ma.core import arctan
 
+import algorithm.end_pose_transform
 from entity import GraspInfo
 from entity.entity import *
 from jarvis import Jarvis
 from robot_arm.command import EndPoseMoveCommand, BottomTurnCommand, WristRollCommand, GraspCommand, \
     JointControlCommand, LiftMoveCommand, TimerCommand
 from robot_arm.pipeline import Pipeline
-from vlm.image_utils import center_of_mask
-from vlm.lang_sam_demo import show_masks_on_image
+from perception.vision.image_utils import center_of_mask
+from perception.vision.lang_sam_demo import show_masks_on_image
 
 # 配置日志记录
 logging.basicConfig(
@@ -61,10 +62,15 @@ class Tomoko:
         y, x = center_of_mask(wooden_mask)[0]
         distance = self.jarvis.realsense_camera.try_get_object_distance(x, y, depth_frame)
         entity = Teapot()
-        end_pose, target_index = self.jarvis.pixel_to_3d(x, y, distance, depth_intrin, entity)
+        target_index = self.jarvis.pixel_to_3d(x, y, distance, depth_intrin)
+
+        end_pose = algorithm.end_pose_transform.middle_transform(*target_index, entity.radius, entity.polar_angle)
         prompt = "teapot"
         self.grasp_info[prompt] = GraspInfo(target_index, end_pose)
         logging.info(f"{prompt} position: {target_index}")
+
+        # TODO: 茶壶盖目标识别
+
         return target_index
 
     def detect_can(self, color):
@@ -73,9 +79,13 @@ class Tomoko:
         assert objects_position, len(objects_position) == 1
         x, y, distance, mask, _ = objects_position[0]
         entity = TeaCan()
-        end_pose, target_index = self.jarvis.pixel_to_3d(x, y, distance, depth_intrin, entity)
+        target_index = self.jarvis.pixel_to_3d(x, y, distance, depth_intrin)
+        end_pose = algorithm.end_pose_transform.middle_transform(target_index, entity.radius, entity.polar_angle)
         self.grasp_info[prompt] = GraspInfo(target_index, end_pose)
         logging.info(f"{prompt} position: {target_index}")
+
+        # TODO: 茶罐盖子并抓取
+
         return target_index
 
     def detect_water_dispenser(self):
@@ -91,7 +101,8 @@ class Tomoko:
 
         for key in faucets.keys():
             x, y, distance, mask, _ = objects_position[faucets[key]]
-            end_pose, target_index = self.jarvis.pixel_to_3d(x, y, distance, depth_intrin, entity)
+            target_index = self.jarvis.pixel_to_3d(x, y, distance, depth_intrin)
+            end_pose = algorithm.end_pose_transform.middle_transform(target_index, entity.radius, entity.polar_angle)
             self.grasp_info[key] = GraspInfo(target_index, end_pose)
 
     def add_water(self, side):
