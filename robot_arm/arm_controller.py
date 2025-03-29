@@ -13,17 +13,14 @@ class ArmController:
         self.factor = 1000 # 0.001 degree --> 1 degree
         self.init_end_pose = [55, 0, 203, 0, 90, 0]
         self.init_joint = [0, 0, 0, 0, 0, 0]
-        # dir_path = os.path.dirname(__file__)
-        # subprocess.run(["bash", dir_path + '/can_activate.sh', 'can0', '1000000'])
         self.init_status()
-        # self.piper.CrashProtectionConfig(*([4] * 6))
         self.motion_flag = False
 
     def init_status(self):
         self.piper.ConnectPort()
         self.piper.EnableArm(7)
         self.enable_fun()
-        self.piper.GripperCtrl(0, 1000, 0x01, 0)
+        # self.piper.GripperCtrl(0, 1000, 0x01, 0)
 
     def enable_fun(self):
         """
@@ -47,7 +44,7 @@ class ArmController:
                           self.piper.GetArmLowSpdInfoMsgs().motor_6.foc_status.driver_enable_status
             print("Enable state:", enable_flag)
             self.piper.EnableArm(7)
-            self.piper.GripperCtrl(0, 1000, 0x01, 0)
+            self.piper.GripperCtrl(80, 1000, 0x01, 0)
             print("--------------------")
             # 检查是否超过超时时间
             if elapsed_time > timeout:
@@ -67,7 +64,6 @@ class ArmController:
         start_joints = self.joint_state()
         self.piper.MotionCtrl_2(0x01, move_mode, move_speed_rate, 0x00)
         self.piper.JointCtrl(*joints)
-        self.piper.MotionCtrl_2(0x01, move_mode, move_speed_rate, 0x00)
         # record current joint status
         time_elapsed = 0
         while not self.is_joint_in_position(position):
@@ -107,14 +103,14 @@ class ArmController:
         start_end_pos = self.end_pose_state()
         self.piper.MotionCtrl_2(0x01, move_mode, move_speed_rate, 0x00)
         self.piper.EndPoseCtrl(*end_pos)
-        self.piper.MotionCtrl_2(0x01, move_mode, move_speed_rate, 0x00)
         time_elapsed = 0
         while not self.is_end_pose_in_position(position):
             time.sleep(0.01)
             time_elapsed += 1
             if time_elapsed >= 10:
                 if self.is_end_pose_in_position(start_end_pos):
-                    return False
+                    print("Unreachable")
+                    return True
         return True
 
     def is_end_pose_in_position(self, end_pose: List, error: float=1.0):
@@ -171,7 +167,7 @@ class ArmController:
         """
         current_joints = self.joint_state()
         current_joints[0] += degree
-        return self.joint_control(current_joints)
+        return self.joint_control(current_joints, move_speed_rate=15)
 
     def wrist_roll(self, angle):
         """
@@ -187,8 +183,25 @@ class ArmController:
 if __name__ == '__main__':
     arm_controller = ArmController()
     arm_controller.set_grip_degree(80)
-    time.sleep(2)
-    arm_controller.lift(100)
-    time.sleep(1)
-    pos = [0] * 6
-    arm_controller.joint_control(pos)
+    while True:
+        print(arm_controller.end_pose_state())
+        # time.sleep(1)
+        input()
+    # time.sleep(2)
+    # arm_controller.lift(100)
+    # time.sleep(1)
+    # observer_pos = [-45, 10, -10, 0, 10, 0]
+    # pos1 = [300.5489204539047, -233.33717115071423, 218.28423826192972, 0, 110, -37.82469282746757]
+    # flag = arm_controller.end_pose_control(pos)
+    # flag = arm_controller.joint_control(observer_pos)
+    # arm_controller.end_pose_control(pos1)
+    # pos = [0, 10, -10, 0, 30, -5]
+    # arm_controller.joint_control(pos)
+    # time.sleep(2)
+    #
+    # pos = [-35, 10, -10, 0, 10, -5]
+    # arm_controller.joint_control(pos)
+    # time.sleep(2)
+    #
+    # pos = [0, 10, -10, 0, 30, -5]
+    # arm_controller.joint_control(pos)
