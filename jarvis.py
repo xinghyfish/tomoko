@@ -47,7 +47,7 @@ class Jarvis:
             for i, (y, x) in enumerate(image_utils.center_of_mask(masks)):
                 distance = self.realsense_camera.get_pixel_distance(x, y, depth_frame)
                 if distance:
-                    objects_position.append((x, y, distance, masks[i], boxes))
+                    objects_position.append((x, y, distance, masks[i], boxes[i]))
             if objects_position:
                 break
             else:
