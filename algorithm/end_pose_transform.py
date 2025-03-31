@@ -1,6 +1,6 @@
 from numpy import arctan
 
-from robot_arm.arm_controller import hand_length, arm_radius
+from robot_arm.arm_controller import hand_length, arm_radius, gripper_height
 import math
 
 def end_pose_transform(x, y, z, distance, theta, delta_h):
@@ -29,7 +29,7 @@ def end_pose_transform(x, y, z, distance, theta, delta_h):
 
 def bottom_transform(target_index, distance, theta):
     x, y, z = target_index
-    return end_pose_transform(x, y, z, distance, theta, arm_radius * 2)
+    return end_pose_transform(x, y, z, distance, theta, arm_radius - gripper_height / 2)
 
 
 def middle_transform(target_index, distance, theta):
@@ -39,4 +39,4 @@ def middle_transform(target_index, distance, theta):
 
 def top_transform(target_index, distance, theta):
     x, y, z = target_index
-    return end_pose_transform(x, y, z, distance, theta, 0)
+    return end_pose_transform(x, y, z, distance, theta, arm_radius + gripper_height / 2)
