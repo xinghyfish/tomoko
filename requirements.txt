@@ -6,6 +6,6 @@ matplotlib~=3.10.0
 pyrealsense2~=2.55.1.6486
 opencv-python~=4.10.0.84
 scipy~=1.15.0
-piper_sdk
+piper_sdk~=0.0.12
 openai-whisper~=20240930
 sounddevice~=0.5.1
