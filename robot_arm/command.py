@@ -78,24 +78,32 @@ class GraspCommand(Command):
     def execute(self):
         self.last_joints = self.arm_controller.joint_state()
         gripper_open = self.arm_controller.set_grip_degree(70)
-        time.sleep(1)
+        time.sleep(0.5)
         end_pose_control = self.arm_controller.end_pose_control(self.end_pose)
-        time.sleep(1)
+        time.sleep(0.5)
         gripper_close = self.arm_controller.set_grip_degree(0)
-        time.sleep(1)
+        time.sleep(0.5)
         return all([gripper_open, end_pose_control, gripper_close])
 
     def undo(self):
         gripper_open = self.arm_controller.set_grip_degree(70)
         time.sleep(1)
-        lift = self.arm_controller.lift(20)
-        time.sleep(1)
-        via_end_pose = [256.152, -24.306, 190.406, -80.134, 88.019, -85.915]
-        via_flag = self.arm_controller.end_pose_control(via_end_pose, 0x00, 50)
-        time.sleep(2)
+        height = 20
+        lift = self.arm_controller.lift(height)
+        x, y, z, Rx, Ry, Rz = self.arm_controller.end_pose_state()
+        x -= 40 * abs(x) / x
+        y -= 40 * abs(y) / y
+        z += 40
+        time.sleep(0.5)
+        via_flag1 = self.arm_controller.end_pose_control([x, y, z, Rx, Ry, Rz], 0x02, 30)
+        time.sleep(0.5)
+        joint_state = self.arm_controller.joint_state()
+        joint_state[1] -= 15
+        via_flag2 = self.arm_controller.joint_control(joint_state)
+        time.sleep(0.5)
         init_joints_control = self.arm_controller.joint_control(self.last_joints)
-        time.sleep(2)
-        return all([gripper_open, lift, via_flag, init_joints_control])
+        time.sleep(0.5)
+        return all([gripper_open, lift, via_flag1, init_joints_control])
 
     def __str__(self):
         return f"Command(Grasp) - {self.target}"
@@ -112,10 +120,14 @@ class EndPoseMoveCommand(Command):
 
     def execute(self):
         self.last_end_pose = self.arm_controller.end_pose_state()
-        return self.arm_controller.end_pose_control(self.end_pose, self.move_mode, self.move_speed_rate)
+        flag = self.arm_controller.end_pose_control(self.end_pose, self.move_mode, self.move_speed_rate)
+        time.sleep(3)
+        return flag
 
     def undo(self):
-        return self.arm_controller.end_pose_control(self.last_end_pose, self.move_mode, self.move_speed_rate)
+        flag = self.arm_controller.end_pose_control(self.last_end_pose, self.move_mode, self.move_speed_rate)
+        time.sleep(3)
+        return flag
 
     def __str__(self):
         return f"Command(End Pose) - {[round(_, 3) for _ in self.end_pose]}"
