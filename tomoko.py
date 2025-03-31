@@ -5,15 +5,16 @@ import time
 import numpy as np
 from numpy.ma.core import arctan
 
-import algorithm.end_pose_transform
-from entity import GraspInfo
-from entity.entity import *
+import environment
+from algorithm import end_pose_transform, drop_water
+from environment import GraspInfo
+from environment.entity import *
 from jarvis import Jarvis
+from perception.vision.image_utils import center_of_mask
+from perception.vision.lang_sam_demo import show_masks_on_image
 from robot_arm.command import EndPoseMoveCommand, BottomTurnCommand, WristRollCommand, GraspCommand, \
     JointControlCommand, LiftMoveCommand, TimerCommand
 from robot_arm.pipeline import Pipeline
-from perception.vision.image_utils import center_of_mask
-from perception.vision.lang_sam_demo import show_masks_on_image
 
 # 配置日志记录
 logging.basicConfig(
@@ -42,7 +43,7 @@ class Tomoko:
         """
         # detect the whole teapot
         prompt = "yellow circle in teapot"
-        obj_lst, color_image, depth_image, depth_intrin, depth_frame = self.jarvis.detect(prompt)
+        obj_lst, color_image, depth_image, depth_intrin, depth_frame = self.jarvis.segment(prompt)
         assert obj_lst, len(obj_lst) == 1
         xe, ye, dis, mask1, _ = obj_lst[0]
 
@@ -64,7 +65,7 @@ class Tomoko:
         entity = Teapot()
         target_index = self.jarvis.pixel_to_3d(x, y, distance, depth_intrin)
 
-        end_pose = algorithm.end_pose_transform.middle_transform(*target_index, entity.radius, entity.polar_angle)
+        end_pose = end_pose_transform.middle_transform(target_index, entity.radius, entity.polar_angle)
         prompt = "teapot"
         self.grasp_info[prompt] = GraspInfo(target_index, end_pose)
         logging.info(f"{prompt} position: {target_index}")
@@ -75,12 +76,12 @@ class Tomoko:
 
     def detect_can(self, color):
         prompt = f"{color} can"
-        objects_position, _, _, depth_intrin, _ = self.jarvis.detect(prompt)
+        objects_position, _, _, depth_intrin, _ = self.jarvis.segment(prompt)
         assert objects_position, len(objects_position) == 1
         x, y, distance, mask, _ = objects_position[0]
         entity = TeaCan()
         target_index = self.jarvis.pixel_to_3d(x, y, distance, depth_intrin)
-        end_pose = algorithm.end_pose_transform.middle_transform(target_index, entity.radius, entity.polar_angle)
+        end_pose = end_pose_transform.middle_transform(target_index, entity.radius, entity.polar_angle)
         self.grasp_info[prompt] = GraspInfo(target_index, end_pose)
         logging.info(f"{prompt} position: {target_index}")
 
@@ -91,19 +92,40 @@ class Tomoko:
     def detect_water_dispenser(self):
         prompt = "small black rectangle on the bottom"
 
-        objects_position, _, _, depth_intrin, _ = self.jarvis.detect(prompt)
+        objects_position, _, _, depth_intrin, _ = self.jarvis.segment(prompt)
         boxes = [_[-1] for _ in objects_position]
-        print(boxes)
         left_idx = 0 if boxes[0][0] < boxes[1][0] else 1
         right_idx = 1 - left_idx
-        faucets = {'left': left_idx, 'right': right_idx}
+        faucets = {'hot': left_idx, 'cold': right_idx}
         entity = Faucet()
 
         for key in faucets.keys():
             x, y, distance, mask, _ = objects_position[faucets[key]]
             target_index = self.jarvis.pixel_to_3d(x, y, distance, depth_intrin)
-            end_pose = algorithm.end_pose_transform.middle_transform(target_index, entity.radius, entity.polar_angle)
+            end_pose = end_pose_transform.middle_transform(target_index, entity.radius, entity.polar_angle)
             self.grasp_info[key] = GraspInfo(target_index, end_pose)
+
+    def detect_cup(self):
+        class_name = "cup"
+        objects_position, color_image, depth_image, depth_intrin, depth_frame = self.jarvis.detect(class_name)
+        assert len(objects_position) >= 1
+        x, y, distance, box = objects_position[0]
+        y_bottom = box[-1]
+        # detect cup
+        target_index = self.jarvis.pixel_to_3d(x, (y + y_bottom) >> 1, distance, depth_intrin)
+        end_pose_cup = end_pose_transform.middle_transform(target_index, TeaCup().radius, TeaCup().polar_angle)
+        self.grasp_info[class_name] = GraspInfo(target_index, end_pose_cup)
+
+        # detect end pose to drop water
+        x, y, z = target_index
+        xd = x + TeaCup().radius
+        yd = y - TeaCup().radius
+        zd = environment.front_table_height + TeaCup().height + 10 - environment.under_board
+        gamma = -45
+        dest_target_index = drop_water.convert_teacup_to_teapot(xd, yd, zd, math.radians(gamma))
+        drop_water_end_pose = end_pose_transform.middle_transform(dest_target_index, Teapot().radius, Teapot().polar_angle)
+        self.grasp_info['drop water'] = GraspInfo(dest_target_index, drop_water_end_pose)
+        return
 
     def add_water(self, side):
         """
@@ -113,8 +135,9 @@ class Tomoko:
         """
         # 0. satisfy the prerequisites
         assert self.grasp_info.get('teapot') is not None    # detect_teapot is done
-        assert self.grasp_info.get('left') is not None      # detect_faucet is done
-        assert self.grasp_info.get('right') is not None
+        assert self.grasp_info.get('hot') is not None       # detect_faucet is done
+        assert self.grasp_info.get('cold') is not None
+        assert side in ["hot", "cold"]                      # side is valid
 
         # 1. grasp teapot
         add_water_pipeline = Pipeline('add water')
@@ -136,7 +159,6 @@ class Tomoko:
         # back_end_pose = [X_back, Y_back, Z_back, RX_teapot, RY_teapot, RZ_teapot]
         theta_back = math.atan(Y_teapot / X_teapot)
         theta_faucet = math.atan(Y_faucet / X_faucet)
-
 
         delta_theta = math.degrees(theta_faucet - theta_back)
         add_water_pipeline.add_command(BottomTurnCommand(self, delta_theta))
@@ -167,15 +189,15 @@ class Tomoko:
         :return:
         """
         init_joints = self.jarvis.arm_controller.joint_state()
-        via_joints = [45, 10, -20, 0, 30, 0]
+        via_joints = [44, 10, -20, 0, 30, 0]
         self.jarvis.arm_controller.joint_control(via_joints)
         grasp_target = f"{color} can"
         self.current_grasp_object = grasp_target
         end_pose_can = self.grasp_info[grasp_target].end_pose
 
         label = "teapot"
-        wrist_turn_angle = 160
-        drop_tea_pipeline = Pipeline("drop tea")
+        wrist_turn_angle = 180
+        add_tea_pipeline = Pipeline("drop tea")
         teapot_grasp_info = self.grasp_info[label]
         can_grasp_info = self.grasp_info[self.current_grasp_object]
         x_teapot_handle, y_teapot_handle, z_teapot_handle = teapot_grasp_info.position
@@ -194,49 +216,67 @@ class Tomoko:
             y_teapot_handle * math.sin(theta) / math.sqrt(x_teapot_handle ** 2 + y_teapot_handle ** 2),
             math.cos(theta)
         ])
-        center_of_inner_space = np.array([x_teapot_handle, y_teapot_handle, z_teapot_handle]) + (
-                    teapot.inner_radius + teapot.radius) * vec / math.sin(theta)
+        center_of_inner_space = np.array([x_teapot_handle, y_teapot_handle, z_teapot_handle]) + \
+                                        (teapot.inner_radius + teapot.radius - 13) * math.sin(theta) * vec
         x_teapot, y_teapot, z_teapot = center_of_inner_space.tolist()
 
         # calculate the coordinate above the teapot
         x_can, y_can, z_can = can_grasp_info.position
         angle_can = math.degrees(arctan(y_can / x_can))
-        angle_teapot = math.degrees(arctan((y_teapot + can.height / 2) / x_teapot))
+        angle_teapot = math.degrees(arctan(y_teapot / x_teapot))
         xOy_distance_teapot = math.sqrt(x_teapot ** 2 + y_teapot ** 2)
         x_can, y_can, z_can = can_grasp_info.position
         xOy_distance_can = math.sqrt(x_can ** 2 + y_can ** 2)
         factor = xOy_distance_teapot / xOy_distance_can
         x_target, y_target = factor * x_can, factor * y_can
-        drop_height = z_teapot_handle + 150
-        end_pose = self.jarvis.end_pose_transform(x_target, y_target, drop_height, can.radius, 90)
+        drop_height = z_teapot_handle + 120
+        end_pose = end_pose_transform.middle_transform((x_target, y_target, drop_height), can.radius, 90)
 
-        drop_tea_pipeline.add_command(GraspCommand(self, grasp_target, end_pose_can))
-        drop_tea_pipeline.add_command(EndPoseMoveCommand(self, end_pose, "p", 20))
-        drop_tea_pipeline.add_command(BottomTurnCommand(self, angle_teapot - angle_can))
-        drop_tea_pipeline.add_command(WristRollCommand(self, wrist_turn_angle))
+        add_tea_pipeline.add_command(GraspCommand(self, grasp_target, end_pose_can))
+        add_tea_pipeline.add_command(LiftMoveCommand(self, 10))
+        add_tea_pipeline.add_command(EndPoseMoveCommand(self, end_pose, "p", 20))
+        add_tea_pipeline.add_command(BottomTurnCommand(self, angle_teapot - angle_can))
+        add_tea_pipeline.add_command(WristRollCommand(self, wrist_turn_angle))
 
+        # input()
         # perform the whole pipeline
-        drop_tea_pipeline.run()
+        add_tea_pipeline.run()
         # this is a time-consuming operation
         time.sleep(2)
         # go back
-        drop_tea_pipeline.undo()
+        add_tea_pipeline.undo()
 
-        self.jarvis.arm_controller.lift(10)
-        self.jarvis.arm_controller.joint_control(via_joints)
-        self.jarvis.arm_controller.joint_control(init_joints)
+        joints = [0, 10, -20, 0, 40, -5]
+        self.jarvis.arm_controller.joint_control(joints)
+
+    def drop_water(self):
+        gamma = -45
+        drop_water_pipeline = Pipeline("drop water")
+        joints = [0, 10, -20, 0, 40, -5]
+        drop_water_pipeline.add_command(JointControlCommand(self, joints, 20))
+        teapot_grasp_end_pose = self.grasp_info['teapot'].end_pose
+        drop_water_pipeline.add_command(GraspCommand(self, 'teapot', teapot_grasp_end_pose))
+        drop_water_pipeline.add_command(LiftMoveCommand(self, 20))
+        drop_water_pipeline.add_command(EndPoseMoveCommand(self, self.grasp_info["drop water"].end_pose, "linear", 50))
+        drop_water_pipeline.add_command(WristRollCommand(self, gamma))
+        drop_water_pipeline.add_command(TimerCommand(self, 2))
+
+        if drop_water_pipeline.run() and drop_water_pipeline.undo():
+            return True
+
 
     def scan_desk(self):
-        teapot_detectable_joints = [0, 10, -20, 0, 30, 0]
+        teapot_detectable_joints = [0, 0, -10, 0, 30, -5]
         self.jarvis.arm_controller.joint_control(teapot_detectable_joints)
+        time.sleep(2)
         self.detect_teapot()
-        tea_can_detectable_joints = [40, 10, -20, 0, 30, 0]
-        time.sleep(3)
+        tea_can_detectable_joints = [40, 0, -10, 0, 30, -5]
+        self.jarvis.arm_controller.joint_control(tea_can_detectable_joints)
+        time.sleep(2)
         # suppose color
-        colors = ["silver", "red", "yellow"]
+        # colors = ["silver", "red", "yellow"]
+        colors = ["red"]
         for color in colors:
-            self.jarvis.arm_controller.joint_control(tea_can_detectable_joints)
-            time.sleep(1)
             self.detect_can(color)
             print(color)
             print(self.jarvis.arm_controller.joint_state())
@@ -245,29 +285,40 @@ class Tomoko:
 
 def pipeline():
     tomoko = Tomoko()
-    pos = [0, 10, -10, 0, 30, -5]
-    tomoko.jarvis.arm_controller.joint_control(pos)
-    time.sleep(2)
-    tomoko.detect_teapot()
+    # pos = [-40, 10, -10, 0, 10, -5]
+    # tomoko.jarvis.arm_controller.joint_control(pos)
+    # time.sleep(2)
+    # tomoko.detect_water_dispenser()
+    # time.sleep(1)
 
-    pos = [-40, 10, -10, 0, 10, -5]
-    tomoko.jarvis.arm_controller.joint_control(pos)
-    time.sleep(2)
-    tomoko.detect_water_dispenser()
-    time.sleep(1)
+    # pos = [0, 10, -10, 0, 30, -5]
+    # tomoko.jarvis.arm_controller.joint_control(pos)
 
-    pos = [0, 10, -10, 0, 30, -5]
-    tomoko.jarvis.arm_controller.joint_control(pos)
-
+    tomoko.scan_desk()
     for info in tomoko.grasp_info.items():
         print(info)
 
     # tomoko.jarvis.arm_controller.joint_control([0] * 6)
-    tomoko.add_water('left')
-    # tomoko.scan_desk()
-    # tomoko.add_tea_to_teapot("red")
+    # tomoko.add_water('left')
+    tomoko.add_tea_to_teapot("red")
+
+    # tomoko.drop_water()
+
+def test_detect_cup_and_drop_water():
+    tomoko = Tomoko()
+    tomoko.jarvis.arm_controller.joint_control([20, 20, -40, 0, 60, -5])
+    time.sleep(0.5)
+    tomoko.detect_cup()
+    tomoko.jarvis.arm_controller.joint_control([-20, 10, -10, 0, 30, -5])
+    time.sleep(0.5)
+    tomoko.detect_teapot()
+    print(tomoko.grasp_info)
+
+    input()
+    tomoko.drop_water()
 
 
 if __name__ == '__main__':
     # time.sleep(5)
-    pipeline()
+    # pipeline()
+    test_detect_cup_and_drop_water()
