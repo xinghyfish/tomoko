@@ -5,6 +5,7 @@ from piper_sdk import *
 
 hand_length = 140.0
 arm_radius = 25.0
+gripper_height = 19.0
 
 class ArmController:
     def __init__(self):
@@ -183,10 +184,10 @@ class ArmController:
 if __name__ == '__main__':
     arm_controller = ArmController()
     arm_controller.set_grip_degree(80)
-    while True:
-        print(arm_controller.end_pose_state())
-        # time.sleep(1)
-        input()
+    # while True:
+    #     print(arm_controller.end_pose_state())
+    #     # time.sleep(1)
+    #     time.sleep(1)
     # time.sleep(2)
     # arm_controller.lift(100)
     # time.sleep(1)
@@ -205,3 +206,8 @@ if __name__ == '__main__':
     #
     # pos = [0, 10, -10, 0, 30, -5]
     # arm_controller.joint_control(pos)
+    tea_can_detectable_joints = [0, 0, 0, 0, 0, 0]
+    arm_controller.joint_control(tea_can_detectable_joints)
+
+    # pos = [190.7229501049612, 199.69747504102637, 170.6773036865068, 0, 90, 49.472605886401794]
+    # arm_controller.end_pose_control(pos)
