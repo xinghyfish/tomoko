@@ -41,7 +41,6 @@ def get_target_index(R_g: List, T_g: List, T_c: List):
     world_matrix = np.dot(vec_hb, H_cb)
     world_matrix = np.dot(world_matrix, T_c)
     target_index = world_matrix[:3]
-    print(target_index)
 
     return target_index
 
