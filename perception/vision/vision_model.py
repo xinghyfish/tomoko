@@ -8,7 +8,7 @@ from ultralytics import YOLO
 os.environ['TORCH_CUDA_ARCH_LIST'] = '8.6'
 
 SAM_MODEL_PREFIX = "sam2.1_hiera_%s"
-DIR_PATH = os.path.dirname(__file__)
+DIR_PATH = os.path.dirname(__file__) + "/.."
 SAM_MODEL_PATH = DIR_PATH + "/checkpoints/sam2.1/sam2.1_hiera_%s.pt"
 YOLOv11_DETECT_MODEL_PATH = DIR_PATH + "/checkpoints/yolov11/yolo11%s.pt"
 YOLOv11_CLASSIFICATION_MODEL_PATH = DIR_PATH + "/checkpoints/yolov11/yolo11%s-cls.pt"
@@ -40,8 +40,8 @@ class VisionModel:
         result = results[0]
         return result
 
-    def detect(self, image: Image) -> List[Dict]:
-        results = self.yolo_detect(source=image)
+    def detect(self, image: Image, class_type: str) -> List:
+        results = self.yolo_detect(source=image, save=False)
         detected_objects = []
 
         for result in results:
@@ -56,15 +56,15 @@ class VisionModel:
 
                 # Get class name (optional, if you have class names available)
                 class_name = self.yolo_detect.names[int(cls)]  # Convert class index to class name
+                if class_type == class_name:
+                    info = {
+                        "conf": conf,
+                        "box": [int(x_min), int(y_min), int(x_max), int(y_max)],
+                    }
+                    detected_objects.append(info)
 
-                info = {
-                    "category": class_name,
-                    "confidence": conf,
-                    "box": [x_min, y_min, x_max, y_max],
-                }
-                detected_objects.append(info)
-
-            return detected_objects
+        detected_objects.sort(key=lambda x: x["conf"], reverse=True)
+        return detected_objects
 
     def classify(self, image: Image) -> Tuple[str, float, List[Dict]]:
         results = self.yolo_classification(source=image)
