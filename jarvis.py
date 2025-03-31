@@ -9,7 +9,7 @@ from realsense_camera.realsense_camera import RealsenseCamera
 from algorithm import eye2arm_transform, end_pose_transform
 from robot_arm.arm_controller import ArmController
 from perception.vision import image_utils
-from perception.vision.lang_sam_demo import show_masks_on_image
+from perception.vision.image_utils import show_masks_on_image, show_box_on_image
 from perception.vision.vision_model import VisionModel
 
 
@@ -29,7 +29,7 @@ class Jarvis:
             "teapot": [80.0, 110],
         }
 
-    def detect(self, text_prompt: str):
+    def segment(self, text_prompt: str):
         # count the times of invalid detect
         # RealSense camera will return 0 when the depth is invalid (undetectable/too far/too near)
         invalid_count, invalid_threshold, distance, x, y = 0, 4, 0.0, -1, -1
@@ -47,6 +47,41 @@ class Jarvis:
                 distance = self.realsense_camera.get_pixel_distance(x, y, depth_frame)
                 if distance:
                     objects_position.append((x, y, distance, masks[i], boxes[i]))
+            if objects_position:
+                break
+            else:
+                print("Invalid frame. Try again.")
+                invalid_count += 1
+
+        if invalid_threshold == invalid_count:
+            distance = self.realsense_camera.try_get_object_distance(x, y, depth_frame)
+            if not distance:
+                print("Unable to grasp target object.")
+                return None
+
+        return objects_position, color_image, depth_image, depth_intrin, depth_frame
+
+    def detect(self, class_name: str):
+        # count the times of invalid detect
+        # RealSense camera will return 0 when the depth is invalid (undetectable/too far/too near)
+        invalid_count, invalid_threshold, distance, x, y = 0, 4, 0.0, -1, -1
+
+        color_image, depth_intrin, depth_image, depth_frame = [None] * 4
+        objects_position = []
+        while invalid_count < invalid_threshold and distance == 0.0:
+            objects_position.clear()
+            color_image, depth_image, depth_intrin, depth_frame = self.realsense_camera.get_aligned_images()
+            results = self.vision_model.detect(PIL.Image.fromarray(color_image), class_name)
+
+            show_box_on_image(color_image, class_name, results)
+            centers = []
+            for info in results:
+                x1, y1, x2, y2 = info['box']
+                centers.append(((y1 + y2) >> 1, (x1 + x2) >> 1))
+            for i, (y, x) in enumerate(centers):
+                distance = self.realsense_camera.get_pixel_distance(x, y, depth_frame)
+                if distance:
+                    objects_position.append((x, y, distance, results[i]['box']))
             if objects_position:
                 break
             else:
