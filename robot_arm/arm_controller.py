@@ -130,9 +130,9 @@ class ArmController:
         end_pose = [s.X_axis, s.Y_axis, s.Z_axis, s.RX_axis, s.RY_axis, s.RZ_axis]
         return [x / self.factor for x in end_pose]
 
-    def set_grip_degree(self, degree):
+    def set_grip_degree(self, degree, gripper_effort=1000):
         self.piper.MotionCtrl_2(0x01, 0x00, 100, 0x00)
-        self.piper.GripperCtrl(abs(round(degree * self.factor)), 1000, 0x01, 0)
+        self.piper.GripperCtrl(abs(round(degree * self.factor)), gripper_effort, 0x01, 0)
         self.piper.MotionCtrl_2(0x01, 0x00, 100, 0x00)
         self.gripper_degree = degree
         return True
