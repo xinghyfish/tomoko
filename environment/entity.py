@@ -34,3 +34,4 @@ class Faucet(Entity):
     def __init__(self):
         radius, polar_angle = 0, 110
         super().__init__(radius, polar_angle)
+        self.push_distance = 40
