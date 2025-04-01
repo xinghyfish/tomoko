@@ -1,5 +1,5 @@
 front_table_height = 97.9
-side_table_height = 220.0
+side_table_height = 255.0
 under_board = -1.0
 
 
