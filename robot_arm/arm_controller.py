@@ -6,6 +6,7 @@ from piper_sdk import *
 hand_length = 140.0
 arm_radius = 25.0
 gripper_height = 19.0
+gripper_length = 75
 
 class ArmController:
     def __init__(self):
