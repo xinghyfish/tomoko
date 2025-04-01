@@ -8,14 +8,14 @@ class Entity:
 
 class TeaCup(Entity):
     def __init__(self):
-        radius, polar_angle = 27.5, 90
+        radius, polar_angle = 40, 90
         super().__init__(radius, polar_angle)
         self.height = 43.3
 
 
 class TeaCan(Entity):
     def __init__(self):
-        radius, polar_angle = 22, 90
+        radius, polar_angle = 40, 90
         super().__init__(radius, polar_angle)
         self.height = 53.6
         self.cover = 10
@@ -26,9 +26,9 @@ class Teapot(Entity):
         radius, polar_angle = 85, 110
         super().__init__(radius, polar_angle)
         self.inner_radius = 45
-        self.height = 64.1
-        self.cover = 15.5
-
+        self.height = 65.1
+        self.cover_height = 16.0
+        self.cover_radius = 10
 
 class Faucet(Entity):
     def __init__(self):
