@@ -1,10 +1,12 @@
 import math
 import time
+from typing import List
 
 import PIL
 from PIL import Image
-from numpy.ma.core import arctan
+from numpy.ma.core import arctan, arccos
 
+from environment.camera import CameraPosition
 from realsense_camera.realsense_camera import RealsenseCamera
 from algorithm import eye2arm_transform, end_pose_transform
 from robot_arm.arm_controller import ArmController
@@ -117,19 +119,19 @@ class Jarvis:
         # but here we temporarily use a dict
         return target_index
 
-    def set_zero(self):
-        self.arm_controller.set_zero_state()
-        time.sleep(1)
+    def set_camera_view(self, target_index: List[float]) -> None:
+        joints = self.arm_controller.joint_state()
+        D = CameraPosition.w
+
+        xd, yd, _ = target_index
+        self.arm_controller.end_pose_state()
+
+        A = math.sqrt(xd ** 2 + yd ** 2)
+        theta = arccos(D / A) - arccos(yd / A)
+        joints[0] = math.degrees(arctan(theta))
+        self.arm_controller.joint_control(joints)
 
 
 if __name__ == '__main__':
     jarvis = Jarvis()
-    jarvis.arm_controller.lift(100)
     time.sleep(2)
-    # jarvis.arm_controller.lift(-100)
-    # time.sleep(2)
-    # jarvis.arm_controller.set_grip_degree(80)
-    # time.sleep(1)
-    # jarvis.arm_controller.lift(100)
-    # time.sleep(1)
-    jarvis.set_zero()
