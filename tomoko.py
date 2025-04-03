@@ -52,7 +52,7 @@ class Tomoko:
         wooden_mask = np.where(abs(teapot_depth - min_depth) <= thickness, 1, 0)[np.newaxis, :]
         show_masks_on_image(color_image, wooden_mask)
         # time to check it out
-        time.sleep(3)
+        time.sleep(0.5)
 
         y, x = center_of_mask(wooden_mask)[0]
         distance = self.jarvis.realsense_camera.try_get_object_distance(x, y, depth_frame)
@@ -68,10 +68,8 @@ class Tomoko:
         x_handle, y_handle, _ = target_index
         theta = arctan(y_handle / x_handle)
         delta = (Teapot().radius + Teapot().inner_radius + Teapot().cover_radius * 2) * math.sin(math.radians(Teapot().polar_angle))
-        print("delta = ", delta)
-        print("theta = ", math.degrees(theta))
         x_center = x_handle + math.cos(theta) * delta - Teapot().cover_radius
-        y_center = y_handle + math.sin(theta) * delta - Teapot().cover_radius * 2
+        y_center = y_handle + math.sin(theta) * delta
         z_center = environment.front_table_height + Teapot().height - environment.under_board
 
         end_pose_cover = end_pose_transform.bottom_transform([x_center, y_center, z_center], Teapot().cover_radius * 2, 135)
@@ -89,10 +87,7 @@ class Tomoko:
             assert objects_position, len(objects_position) == 1
             x, y, distance, mask, _ = objects_position[0]
             target_index = self.jarvis.pixel_to_3d(x, y, distance, depth_intrin)
-            next_angle = arctan(y / x)
-            joints = self.jarvis.arm_controller.joint_state()
-            joints[0] = math.degrees(next_angle)
-            self.jarvis.arm_controller.joint_control(joints)
+            self.jarvis.set_camera_view(target_index)
             time.sleep(0.5)
 
         end_pose = end_pose_transform.middle_transform(target_index, entity.radius, entity.polar_angle)
@@ -108,17 +103,20 @@ class Tomoko:
 
     def detect_water_dispenser(self):
         prompt = "small black rectangle on the bottom"
-
-        objects_position, _, _, depth_intrin, _ = self.jarvis.segment(prompt)
-        boxes = [_[-1] for _ in objects_position]
-        left_idx = 0 if boxes[0][0] < boxes[1][0] else 1
-        right_idx = 1 - left_idx
-        faucets = {'hot': left_idx, 'cold': right_idx}
+        target_index = [None] * 3
         entity = Faucet()
 
-        for key in faucets.keys():
-            x, y, distance, mask, _ = objects_position[faucets[key]]
-            target_index = self.jarvis.pixel_to_3d(x, y, distance, depth_intrin)
+        for key in ['hot', 'cold']:
+            for i in range(3):
+                objects_position, _, _, depth_intrin, _ = self.jarvis.segment(prompt)
+                boxes = [_[-1] for _ in objects_position]
+                left_idx = 0 if boxes[0][0] < boxes[1][0] else 1
+                right_idx = 1 - left_idx
+                faucets = {'hot': left_idx, 'cold': right_idx}
+                x, y, distance, mask, _ = objects_position[faucets[key]]
+                target_index = self.jarvis.pixel_to_3d(x, y, distance, depth_intrin)
+                self.jarvis.set_camera_view(target_index)
+                time.sleep(0.5)
             # 如果直接用机械臂接触龙头表面的 end pose
             end_pose_temp = end_pose_transform.middle_transform(target_index, entity.radius, entity.polar_angle)
             X_faucet, Y_faucet, Z_faucet, RX_faucet, RY_faucet, RZ_faucet = end_pose_temp
@@ -143,17 +141,13 @@ class Tomoko:
 
         # 眼在手上纯视觉方法迭代式求解对称物体质心
         for i in range(3):
-            # TODO: 需要考虑相机的偏移（正视图最右侧为RGB相机）
             objects_position, color_image, depth_image, depth_intrin, depth_frame = self.jarvis.detect(class_name)
             assert len(objects_position) >= 1
             x, y, distance, box = objects_position[0]
             y_bottom = box[-1]
             # 检测茶杯
             target_index = self.jarvis.pixel_to_3d(x, (y + y_bottom) >> 1, distance, depth_intrin)
-            next_angle = arctan(target_index[1] / target_index[0])
-            joints = self.jarvis.arm_controller.joint_state()
-            joints[0] = math.degrees(next_angle)
-            self.jarvis.arm_controller.joint_control(joints)
+            self.jarvis.set_camera_view(target_index)
             time.sleep(0.5)
 
         end_pose_cup = end_pose_transform.middle_transform(target_index, TeaCan().radius, TeaCan().polar_angle)
@@ -177,7 +171,6 @@ class Tomoko:
     def scan_desk(self):
         """
         预操作：环境检查，确保茶具都在位置上，同时记录下茶具的位置和抓取信息
-        :return:
         """
         # TODO：补充所有茶具的 detect 方法
         teapot_detectable_joints = [0, 0, -10, 0, 30, -5]
@@ -257,7 +250,7 @@ class Tomoko:
         add_tea_pipeline.add_command(GraspCommand(self, grasp_target, end_pose_can))
         add_tea_pipeline.add_command(LiftMoveCommand(self, 10))
         add_tea_pipeline.add_command(EndPoseMoveCommand(self, end_pose, "p", 20))
-        add_tea_pipeline.add_command(BottomTurnCommand(self, angle_teapot - angle_can))
+        add_tea_pipeline.add_command(BottomTurnCommand(self, math.degrees(angle_teapot - angle_can)))
         add_tea_pipeline.add_command(WristRollCommand(self, wrist_turn_angle))
         add_tea_pipeline.add_command(TimerCommand(self, 0.5))
 
@@ -419,10 +412,57 @@ def test_detect_teapot_and_cover():
     tomoko.jarvis.arm_controller.lift(30)
 
 
+def test_detect_teapot_and_get_water():
+    tomoko = Tomoko()
+    tomoko.jarvis.arm_controller.joint_control([-10, 10, -10, 0, 30, 0])
+    time.sleep(0.5)
+    tomoko.detect_teapot()
+    pos = [-40, 10, -10, 0, 10, -5]
+    tomoko.jarvis.arm_controller.joint_control(pos)
+    time.sleep(0.5)
+    tomoko.detect_water_dispenser()
+    tomoko.jarvis.arm_controller.joint_control([-10, 10, -10, 0, 30, 5])
+    time.sleep(0.5)
+    # tomoko.add_hot_water()
+
+
+def detect_tea_can_and_add_tea():
+    tomoko = Tomoko()
+    tomoko.jarvis.arm_controller.joint_control([-10, 10, -10, 0, 30, 5])
+    time.sleep(0.5)
+    tomoko.detect_teapot()
+    tomoko.jarvis.arm_controller.joint_control([55, 10, -20, 0, 15, 5])
+    time.sleep(0.5)
+    tomoko.detect_can("red")
+    tomoko.add_tea_to_teapot("red")
+    time.sleep(0.5)
+
+def test_wash_teapot():
+    tomoko = Tomoko()
+    tomoko.jarvis.arm_controller.joint_control([-10, 10, -10, 0, 30, -5])
+    time.sleep(0.5)
+    tomoko.detect_teapot()
+    # pos = [-40, 10, -10, 0, 10, -5]
+    # tomoko.jarvis.arm_controller.joint_control(pos)
+    # time.sleep(0.5)
+    # tomoko.detect_water_dispenser()
+    command = GraspCommand(tomoko, "teapot", tomoko.grasp_info["teapot cover"].end_pose)
+    command.execute()
+    time.sleep(0.5)
+    tomoko.jarvis.arm_controller.lift(20)
+    time.sleep(0.5)
+    tomoko.jarvis.arm_controller.bottom_turn(-60)
+    time.sleep(0.5)
+    tomoko.jarvis.arm_controller.wrist_roll(-60)
+
+
+
+
 if __name__ == '__main__':
-    # time.sleep(5)
-    # pipeline()
     # test_detect_cup_and_drop_water()
+    # test_detect_teapot_and_get_water()
     # test_detect_can_and_cover()
-    test_detect_cup_and_drop_water()
-    
+    # detect_tea_can_and_add_tea()
+    # test_wash_teapot()
+    time.sleep(15)
+    test_detect_teapot_and_cover()
