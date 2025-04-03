@@ -69,8 +69,6 @@ def mask_diff(full_mask: np.ndarray, mask: np.ndarray) -> np.ndarray:
 def show_masks_on_image(image_pil, masks):
     # 假设 results 是从模型返回的预测结果
     # 通常包含一个 mask 列表，形状为 (H, W) 的布尔值（True 表示属于分割区域）
-    # 提取第一个结果的 mask
-    n, h, w = masks.shape
     # 将 mask 转为 NumPy 数组
     masks_np = np.array(masks).astype(np.uint8)
 
