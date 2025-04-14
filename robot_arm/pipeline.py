@@ -27,7 +27,7 @@ class Pipeline:
         """Perform each command.execute() in order."""
         for command in self.commands:
             flag = command.execute()
-            time.sleep(1)
+            time.sleep(0.1)
             if flag:
                 logging.info(f"{command} execute done.")
             else:
@@ -40,7 +40,7 @@ class Pipeline:
         """Perform each command.undo() in reversed order."""
         for command in reversed(self.commands):  # 逆序执行 undo
             flag = command.undo()
-            time.sleep(1)
+            time.sleep(0.1)
             if flag:
                 logging.info(f"{command} undo done.")
             else:
@@ -48,6 +48,9 @@ class Pipeline:
                 return False
         logging.info(f"Pipeline [{self.label}] undo is done.")
         return True
+
+    def clear(self):
+        self.commands.clear()
 
     def __str__(self):
         msg = f"[Pipeline] {self.label}\n"
