@@ -3,8 +3,11 @@ from typing import Tuple
 import pyrealsense2 as rs
 import numpy as np
 
+from test_utils import time_measurement
+
 
 class RealsenseCamera:
+    @time_measurement
     def __init__(self, color_mode=(640, 480, rs.format.rgb8, 30),
                  depth_mode=(640, 480, rs.format.z16, 30)):
         self.pipeline = rs.pipeline()
@@ -24,6 +27,7 @@ class RealsenseCamera:
             _ = self.pipeline.wait_for_frames()
             self.count += 1
 
+    @time_measurement
     def get_aligned_images(self) -> Tuple:
         # Wait for a coherent pair of frames: depth and color
         frames = self.pipeline.wait_for_frames()

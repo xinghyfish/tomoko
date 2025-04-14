@@ -99,6 +99,7 @@ class Jarvis:
             centers = []
             for info in results:
                 x1, y1, x2, y2 = info['box']
+                print(f"box: [{info['box']}")
                 centers.append(((y1 + y2) >> 1, (x1 + x2) >> 1))
             for i, (y, x) in enumerate(centers):
                 distance = self.realsense_camera.get_pixel_distance(x, y, depth_frame)
@@ -142,10 +143,9 @@ class Jarvis:
         :return: 如果在重复定位精度以内则返回 True 并进行进一步调整，否则为 False
         """
         joints = self.arm_controller.joint_state()
-        D = CameraPosition.w
+        D = 45
 
         xd, yd, _ = target_index
-        x, y, _, _, _, _ = self.arm_controller.end_pose_state()
 
         A = math.sqrt(xd ** 2 + yd ** 2)        # 目标在xOy平面上和原点的距离
         theta = arctan(yd / xd) - arcsin(D / A)  # 对齐深度相机中轴和目标中心的机械臂Joint1角度
