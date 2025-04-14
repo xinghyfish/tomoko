@@ -5,6 +5,8 @@ from PIL import Image
 from lang_sam import LangSAM
 from ultralytics import YOLO
 
+from test_utils import time_measurement
+
 os.environ['TORCH_CUDA_ARCH_LIST'] = '8.6'
 
 SAM_MODEL_PREFIX = "sam2.1_hiera_%s"
@@ -17,6 +19,7 @@ DETECTION_TASK_TYPE = "detection"
 
 
 class VisionModel:
+    @time_measurement
     def __init__(self, sam_type='small', yolo_type='x'):
         """
         Initialize Vision Model by SAM2.1 type and YOLOv11 type.
@@ -33,6 +36,7 @@ class VisionModel:
         self.yolo_detect = YOLO(yolo_detect_model_path, task=DETECTION_TASK_TYPE)
         self.yolo_classification = YOLO(yolo_cls_model_path, task=CLASSIFICATION_TASK_TYPE)
 
+    @time_measurement
     def segment(self, image: Image, text_prompt: str) -> dict[str, Any]:
         results = self.lang_sam.predict([image], [text_prompt])
         # results.shape == (n, h, w), where n == #objects(in text prompt)
@@ -40,6 +44,7 @@ class VisionModel:
         result = results[0]
         return result
 
+    @time_measurement
     def detect(self, image: Image, class_type: str) -> List:
         results = self.yolo_detect(source=image, save=False)
         detected_objects = []
