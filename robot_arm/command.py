@@ -78,31 +78,31 @@ class GraspCommand(Command):
     def execute(self):
         self.last_joints = self.arm_controller.joint_state()
         gripper_open = self.arm_controller.set_grip_degree(70)
-        time.sleep(0.5)
+        time.sleep(0.2)
         end_pose_control = self.arm_controller.end_pose_control(self.end_pose)
-        time.sleep(0.5)
+        time.sleep(0.2)
         gripper_close = self.arm_controller.set_grip_degree(0)
-        time.sleep(0.5)
+        time.sleep(0.2)
         return all([gripper_open, end_pose_control, gripper_close])
 
     def undo(self):
         gripper_open = self.arm_controller.set_grip_degree(70)
-        time.sleep(1)
+        time.sleep(0.5)
         height = 20
         lift = self.arm_controller.lift(height)
         x, y, z, Rx, Ry, Rz = self.arm_controller.end_pose_state()
         x -= 40 * abs(x) / x
         y -= 40 * abs(y) / y
         z += 40
-        time.sleep(0.5)
+        time.sleep(0.2)
         via_flag1 = self.arm_controller.end_pose_control([x, y, z, Rx, Ry, Rz], 0x02, 30)
-        time.sleep(0.5)
+        time.sleep(0.2)
         joint_state = self.arm_controller.joint_state()
         joint_state[1] -= 15
         via_flag2 = self.arm_controller.joint_control(joint_state)
-        time.sleep(0.5)
+        time.sleep(0.2)
         init_joints_control = self.arm_controller.joint_control(self.last_joints)
-        time.sleep(0.5)
+        time.sleep(0.2)
         return all([gripper_open, lift, via_flag1, init_joints_control])
 
     def __str__(self):
@@ -121,12 +121,12 @@ class EndPoseMoveCommand(Command):
     def execute(self):
         self.last_end_pose = self.arm_controller.end_pose_state()
         flag = self.arm_controller.end_pose_control(self.end_pose, self.move_mode, self.move_speed_rate)
-        time.sleep(3)
+        time.sleep(0.1)
         return flag
 
     def undo(self):
         flag = self.arm_controller.end_pose_control(self.last_end_pose, self.move_mode, self.move_speed_rate)
-        time.sleep(3)
+        time.sleep(0.1)
         return flag
 
     def __str__(self):
@@ -168,3 +168,36 @@ class TimerCommand(Command):
 
     def __repr__(self):
         return f"Command(Timer) - elapse {self.seconds} seconds"
+
+
+class GripperCommand(Command):
+    def __init__(self, tomoko, *args):
+        super().__init__(tomoko)
+        self.degree = args[0]
+
+    def execute(self):
+        flag = self.arm_controller.set_grip_degree(self.degree)
+        time.sleep(0.2)
+        return flag
+
+    def undo(self):
+        flag = self.arm_controller.set_grip_degree(0 if self.degree else 70)
+        time.sleep(0.2)
+        return flag
+
+
+class HeadUpCommand(Command):
+    def __init__(self, tomoko):
+        super().__init__(tomoko)
+
+    def execute(self):
+        joints = self.arm_controller.joint_state()
+        joints[0] -= 10
+        flag = self.arm_controller.joint_control(joints)
+        return flag
+
+    def undo(self):
+        joints = self.arm_controller.joint_state()
+        joints[0] += 10
+        flag = self.arm_controller.joint_control(joints)
+        return flag
