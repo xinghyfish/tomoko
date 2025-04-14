@@ -3,6 +3,8 @@ from typing import List
 
 from piper_sdk import *
 
+from test_utils import time_measurement
+
 hand_length = 140.0
 arm_radius = 25.0
 gripper_height = 19.0
@@ -18,11 +20,11 @@ class ArmController:
         self.init_status()
         self.motion_flag = False
 
+    @time_measurement
     def init_status(self):
         self.piper.ConnectPort()
         self.piper.EnableArm(7)
         self.enable_fun()
-        # self.piper.GripperCtrl(0, 1000, 0x01, 0)
 
     def enable_fun(self):
         """
@@ -60,12 +62,15 @@ class ArmController:
             print("Program auto enabling times out, EXIT the program.")
             exit(0)
 
-    def joint_control(self, position: List, move_mode=0x1, move_speed_rate=30):
+    def joint_control(self, position: List, move_speed_rate=30):
         """Control Joint by 6 joints."""
         joints = list(map(lambda x: round(x * self.factor), position))
         start_joints = self.joint_state()
-        self.piper.MotionCtrl_2(0x01, move_mode, move_speed_rate, 0x00)
+        self.piper.MotionCtrl_2(0x01, 0x01, move_speed_rate, 0x00)
+        print(self.piper.GetArmStatus())
         self.piper.JointCtrl(*joints)
+        self.piper.MotionCtrl_2(0x01, 0x01, move_speed_rate, 0x00)
+        self.piper.GetArmStatus()
         # record current joint status
         time_elapsed = 0
         while not self.is_joint_in_position(position):
@@ -103,8 +108,18 @@ class ArmController:
         assert move_mode in [0x00, 0x02]
         end_pos = list(map(lambda x: round(x * self.factor), position))
         start_end_pos = self.end_pose_state()
-        self.piper.MotionCtrl_2(0x01, move_mode, move_speed_rate, 0x00)
-        self.piper.EndPoseCtrl(*end_pos)
+        if move_mode == 0x00:
+            self.piper.MotionCtrl_2(0x01, 0x00, move_speed_rate, 0x00)
+            print(self.piper.GetArmStatus())
+            self.piper.EndPoseCtrl(*end_pos)
+            self.piper.MotionCtrl_2(0x01, 0x00, move_speed_rate, 0x00)
+            self.piper.GetArmStatus()
+        else:
+            self.piper.MotionCtrl_2(0x01, 0x02, move_speed_rate, 0x00)
+            print(self.piper.GetArmStatus())
+            self.piper.EndPoseCtrl(*end_pos)
+            self.piper.MotionCtrl_2(0x01, 0x02, move_speed_rate, 0x00)
+            self.piper.GetArmStatus()
         time_elapsed = 0
         while not self.is_end_pose_in_position(position):
             time.sleep(0.01)
@@ -132,16 +147,14 @@ class ArmController:
         return [x / self.factor for x in end_pose]
 
     def set_grip_degree(self, degree, gripper_effort=1000):
-        self.piper.MotionCtrl_2(0x01, 0x00, 100, 0x00)
         self.piper.GripperCtrl(abs(round(degree * self.factor)), gripper_effort, 0x01, 0)
-        self.piper.MotionCtrl_2(0x01, 0x00, 100, 0x00)
         self.gripper_degree = degree
         return True
 
     def set_zero_state(self):
         if self.gripper_degree:
             self.set_grip_degree(70)
-        self.joint_control(self.init_joint, move_mode=0x0, move_speed_rate=20)
+        self.joint_control(self.init_joint, move_speed_rate=20)
 
     def lift(self, height) -> bool:
         """
@@ -151,7 +164,9 @@ class ArmController:
         """
         x, y, z, Rx, Ry, Rz = self.end_pose_state()
         z += height
-        return self.end_pose_control([x, y, z, Rx, Ry, Rz], move_mode=0x2, move_speed_rate=30)
+        flag = self.end_pose_control([x, y, z, Rx, Ry, Rz], move_mode=0x2, move_speed_rate=30)
+        time.sleep(0.5)
+        return flag
 
     def snake_observe(self):
         """
@@ -185,30 +200,6 @@ class ArmController:
 if __name__ == '__main__':
     arm_controller = ArmController()
     arm_controller.set_grip_degree(80)
-    # while True:
-    #     print(arm_controller.end_pose_state())
-    #     # time.sleep(1)
-    #     time.sleep(1)
-    # time.sleep(2)
-    # arm_controller.lift(100)
-    # time.sleep(1)
-    # observer_pos = [-45, 10, -10, 0, 10, 0]
-    # pos1 = [300.5489204539047, -233.33717115071423, 218.28423826192972, 0, 110, -37.82469282746757]
-    # flag = arm_controller.end_pose_control(pos)
-    # flag = arm_controller.joint_control(observer_pos)
-    # arm_controller.end_pose_control(pos1)
-    # pos = [0, 10, -10, 0, 30, -5]
-    # arm_controller.joint_control(pos)
-    # time.sleep(2)
-    #
-    # pos = [-35, 10, -10, 0, 10, -5]
-    # arm_controller.joint_control(pos)
-    # time.sleep(2)
-    #
-    # pos = [0, 10, -10, 0, 30, -5]
-    # arm_controller.joint_control(pos)
-    tea_can_detectable_joints = [0, 0, 0, 0, 0, 0]
-    arm_controller.joint_control(tea_can_detectable_joints)
-
-    # pos = [190.7229501049612, 199.69747504102637, 170.6773036865068, 0, 90, 49.472605886401794]
-    # arm_controller.end_pose_control(pos)
+    arm_controller.set_zero_state()
+    end_pose = [178, 343, 253, 0, 90, 45]
+    arm_controller.end_pose_control(end_pose, move_mode=0x00)
