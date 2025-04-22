@@ -57,14 +57,13 @@ class Tomoko:
             wooden_mask = np.where(abs(teapot_depth - min_depth) <= thickness, 1, 0)[np.newaxis, :]
             show_masks_on_image(color_image, wooden_mask)
             # time to check it out
-            time.sleep(0.5)
 
             y, x = center_of_mask(wooden_mask)[0]
             print("handle x = ", x)
             distance = self.jarvis.realsense_camera.try_get_object_distance(x, y, depth_frame)
             target_index = self.jarvis.pixel_to_3d(x, y, distance, depth_intrin)
             self.jarvis.set_camera_view(target_index)
-            time.sleep(0.1)
+            time.sleep(0.2)
 
         end_pose = end_pose_transform.middle_transform(target_index, Teapot().radius, Teapot().polar_angle)
         prompt = "teapot"
@@ -248,16 +247,12 @@ class Tomoko:
         xOy_distance_teapot = math.sqrt(x_teapot ** 2 + y_teapot ** 2)
         x_can, y_can, z_can = can_grasp_info.position
         xOy_distance_can = math.sqrt(x_can ** 2 + y_can ** 2)
-        delta_distance = xOy_distance_teapot - xOy_distance_can
+        delta_distance = xOy_distance_teapot - xOy_distance_can - 10
         x_target, y_target = x_can + delta_distance * math.cos(angle_can), y_can +delta_distance * math.sin(angle_can)
         # 茶包倾倒时的高度，由于深度相机安装板影响，需要抬高12cm
         drop_height = 120
         # 茶壶柄的顶端几乎和茶壶无茶盖状态下茶壶口高度一致
         end_pose = end_pose_transform.middle_transform((x_target, y_target, z_teapot_handle + drop_height), can.radius, 90)
-
-        self.remove_teapot_cover()
-        self.jarvis.arm_controller.joint_control([0] * 6)
-        time.sleep(0.1)
 
         # 先取下茶壶盖
         self.remove_teapot_cover()
@@ -281,7 +276,7 @@ class Tomoko:
 
         add_tea_pipeline.add_command(GraspCommand(self, grasp_target, end_pose_can))
         add_tea_pipeline.add_command(LiftMoveCommand(self, 10))
-        add_tea_pipeline.add_command(EndPoseMoveCommand(self, end_pose, "p", 20))
+        add_tea_pipeline.add_command(EndPoseMoveCommand(self, end_pose, "linear", 20))
         add_tea_pipeline.add_command(BottomTurnCommand(self, math.degrees(angle_teapot - angle_can)))
         add_tea_pipeline.add_command(WristRollCommand(self, wrist_turn_angle))
         add_tea_pipeline.add_command(TimerCommand(self, 0.5))
@@ -314,7 +309,6 @@ class Tomoko:
 
         delta_theta = math.degrees(theta_faucet - theta_back)
         add_water_pipeline.add_command(BottomTurnCommand(self, delta_theta))
-
         add_water_pipeline.add_command(EndPoseMoveCommand(self, end_pose_faucet, "linear", 20))
         wait_add_water_elapse_second = 2   # waiting...
         add_water_pipeline.add_command(TimerCommand(self, wait_add_water_elapse_second))
@@ -328,11 +322,7 @@ class Tomoko:
         子任务3：倒茶
         :return:
         """
-        self.jarvis.arm_controller.joint_control([-15, 10, -10, 0, 30, -5])
-        time.sleep(0.1)
-        self.detect_teapot()
         self.remove_teapot_cover()
-
         gamma = -45
         drop_water_pipeline = Pipeline("drop water")
         joints = [0, 10, -20, 0, 40, -5]
@@ -387,19 +377,23 @@ class Tomoko:
         子任务6：清洗茶壶
         """
         wash_teapot_pipeline = Pipeline('wash teapot')
-        # TODO：抓取茶杯，倒出茶水、茶包
+        # TODO：抓取茶壶，倒出茶水、茶包
         wash_teapot_pipeline.add_command(GraspCommand(self, 'teapot', self.grasp_info['teapot'].end_pose))
         wash_teapot_pipeline.add_command(LiftMoveCommand(self, 20))
-        wash_teapot_pipeline.add_command(BottomTurnCommand(self, -50))
+        wash_teapot_pipeline.run()
+        wash_teapot_pipeline.clear()
+        init_angle = self.jarvis.arm_controller.joint_state()[0]
+        wash_teapot_pipeline.add_command(BottomTurnCommand(self, -80 - init_angle))
         wash_teapot_pipeline.add_command(WristRollCommand(self, -90))
-        wash_teapot_pipeline.add_command(WristRollCommand(self, 270))
+        wash_teapot_pipeline.add_command(TimerCommand(self, 3))
+        wash_teapot_pipeline.add_command(WristRollCommand(self, 90))
         wash_teapot_pipeline.run()
         wash_teapot_pipeline.clear()
 
         # TODO：取冷水，清洗茶杯（MOVE C摇晃尝试一下）
         end_pose_faucet = self.grasp_info['cold'].end_pose
         X_faucet, Y_faucet, Z_faucet, RX_faucet, RY_faucet, RZ_faucet = end_pose_faucet
-        angle_faucet = math.atan(Y_faucet / X_faucet)
+        angle_faucet = math.degrees(math.atan(Y_faucet / X_faucet))
         joints = self.jarvis.arm_controller.joint_state()
         current_angle = joints[0]
         wait_add_water_elapse_second = 2  # waiting...
@@ -411,19 +405,23 @@ class Tomoko:
         wash_teapot_pipeline.clear()
 
         # TODO：倒出冷水
-        wash_teapot_pipeline.add_command(WristRollCommand(self, -90))
+        cold_water_wait_time = 3
+        wash_teapot_pipeline.add_command(BottomTurnCommand(self, 5))
+        wash_teapot_pipeline.add_command(WristRollCommand(self, 160))
+        wash_teapot_pipeline.add_command(TimerCommand(self, cold_water_wait_time))
+        wash_teapot_pipeline.add_command(WristRollCommand(self, -160))
         wash_teapot_pipeline.run()
-        wash_teapot_pipeline.undo()
         wash_teapot_pipeline.clear()
         # TODO：茶壶归位，将茶壶盖盖上
-        wash_teapot_pipeline.add_command(BottomTurnCommand(self, 50))
+        wash_teapot_pipeline.add_command(BottomTurnCommand(self, 90 + init_angle))
         wash_teapot_pipeline.add_command(LiftMoveCommand(self, -20))
         wash_teapot_pipeline.add_command(GripperCommand(self, 70))
-        wash_teapot_pipeline.add_command(HeadUpCommand(self))
+        wash_teapot_pipeline.add_command(HeadUpCommand(self, 20))
         wash_teapot_pipeline.add_command(JointControlCommand(self, [0] * 6, 50))
         wash_teapot_pipeline.run()
 
-        self.cover_recover()
+        # self.cover_recover()
+        self.jarvis.arm_controller.joint_control([0] * 6)
 
     def remove_teapot_cover(self):
         """
@@ -434,14 +432,15 @@ class Tomoko:
         remove_cover_pipeline.add_command(GraspCommand(self, "teapot cover", self.grasp_info["teapot cover"].end_pose))
         remove_cover_pipeline.add_command(LiftMoveCommand(self, 25))
         remove_cover_pipeline.add_command(BottomTurnCommand(self, 20))
-        remove_cover_pipeline.add_command(LiftMoveCommand(self, -70))
+        remove_cover_pipeline.add_command(LiftMoveCommand(self, -72))
         remove_cover_pipeline.add_command(GripperCommand(self, 70))
         remove_cover_pipeline.run()
         time.sleep(0.1)
         # 需要存储茶壶盖放置位置以供后续抓取
         self.grasp_info['teapot cover on desk'] = GraspInfo(None, self.jarvis.arm_controller.end_pose_state())
         remove_cover_pipeline.clear()
-        remove_cover_pipeline.add_command(LiftMoveCommand(self, 10))
+        remove_cover_pipeline.add_command(LiftMoveCommand(self, 70))
+        remove_cover_pipeline.add_command(HeadUpCommand(self))
         remove_cover_pipeline.add_command(JointControlCommand(self, [0, 10, -20, 0, 15, -5], 50))
         remove_cover_pipeline.run()
         remove_cover_pipeline.clear()
@@ -450,7 +449,7 @@ class Tomoko:
         """
         将茶壶盖放回茶壶上方
         """
-        self.jarvis.arm_controller.joint_control([-15, 10, -10, 0, 30, -5])
+        self.jarvis.arm_controller.joint_control([-25, 10, -10, 0, 30, -5])
         time.sleep(0.1)
         self.detect_teapot()
         recover_position = self.grasp_info['teapot cover'].end_pose
@@ -494,10 +493,10 @@ def pipeline():
 
 def test_detect_cup_and_drop_water():
     tomoko = Tomoko()
-    tomoko.jarvis.arm_controller.joint_control([20, 20, -20, 0, 40, -5])
+    tomoko.jarvis.arm_controller.joint_control([10, 20, -20, 0, 40, -5])
     time.sleep(0.5)
     tomoko.detect_cup()
-    tomoko.jarvis.arm_controller.joint_control([-10, 10, -10, 0, 30, -5])
+    tomoko.jarvis.arm_controller.joint_control([-15, 10, -10, 0, 30, -5])
     time.sleep(0.5)
     tomoko.detect_teapot()
     # print(tomoko.grasp_info)
@@ -506,10 +505,10 @@ def test_detect_cup_and_drop_water():
 
 def test_detect_can_and_cover():
     tomoko = Tomoko()
-    tomoko.jarvis.arm_controller.joint_control([55, 10, -20, 0, 15, -5])
+    tomoko.jarvis.arm_controller.joint_control([55, 10, -20, 0, 25, -5])
     time.sleep(0.5)
     tomoko.detect_can("red")
-    tomoko.jarvis.arm_controller.joint_control([-10, 10, -10, 0, 30, -5])
+    tomoko.jarvis.arm_controller.joint_control([-20, 10, -10, 0, 30, -5])
     time.sleep(0.5)
     tomoko.detect_teapot()
     tomoko.add_tea_to_teapot("red")
@@ -532,17 +531,19 @@ def test_detect_teapot_and_cover():
 
 def test_detect_teapot_and_get_water():
     tomoko = Tomoko()
-    tomoko.jarvis.arm_controller.joint_control([-10, 10, -10, 0, 30, 0])
+    tomoko.jarvis.arm_controller.joint_control([-20, 10, -10, 0, 30, 0])
     time.sleep(0.5)
     tomoko.detect_teapot()
     print(tomoko.grasp_info['teapot cover'])
-    pos = [-40, 10, -10, 0, 10, -5]
+    pos = [-50, 10, -10, 0, 10, -5]
     tomoko.jarvis.arm_controller.joint_control(pos)
     time.sleep(0.5)
     tomoko.detect_water_dispenser()
     tomoko.jarvis.arm_controller.joint_control([-10, 10, -10, 0, 30, 5])
     time.sleep(0.5)
-    # tomoko.add_hot_water()
+    tomoko.remove_teapot_cover()
+    tomoko.add_hot_water()
+    tomoko.cover_recover()
 
 
 def detect_tea_can_and_add_tea():
@@ -558,21 +559,46 @@ def detect_tea_can_and_add_tea():
 
 def test_wash_teapot():
     tomoko = Tomoko()
-    tomoko.jarvis.arm_controller.joint_control([-10, 10, -10, 0, 30, -5])
+    tomoko.jarvis.arm_controller.joint_control([-15, 10, -10, 0, 30, 0])
     time.sleep(0.5)
     tomoko.detect_teapot()
-    # pos = [-40, 10, -10, 0, 10, -5]
-    # tomoko.jarvis.arm_controller.joint_control(pos)
-    # time.sleep(0.5)
-    # tomoko.detect_water_dispenser()
-    command = GraspCommand(tomoko, "teapot", tomoko.grasp_info["teapot cover"].end_pose)
-    command.execute()
+    tomoko.jarvis.arm_controller.joint_control([-50, 10, -10, 0, 20, 0])
     time.sleep(0.5)
-    tomoko.jarvis.arm_controller.lift(20)
+    tomoko.detect_water_dispenser()
+    # tomoko.remove_teapot_cover()
+    tomoko.wash_teapot()
+
+def execute():
+    # environment scanning
+    tomoko = Tomoko()
+    tomoko.jarvis.arm_controller.joint_control([-50, 10, -10, 0, 20, 0])
     time.sleep(0.5)
-    tomoko.jarvis.arm_controller.bottom_turn(-60)
+    tomoko.detect_water_dispenser()
+    tomoko.jarvis.arm_controller.joint_control([-25, 10, -10, 0, 30, 0])
     time.sleep(0.5)
-    tomoko.jarvis.arm_controller.wrist_roll(-60)
+    tomoko.detect_teapot()
+    tomoko.jarvis.arm_controller.joint_control([10, 20, -20, 0, 40, -5])
+    time.sleep(0.5)
+    tomoko.detect_cup()
+    tomoko.jarvis.arm_controller.joint_control([55, 10, -20, 0, 25, -5])
+    time.sleep(0.5)
+    tomoko.detect_can("red")
+
+    # execute task
+    tomoko.add_tea_to_teapot("red")
+    tomoko.add_hot_water()
+    time.sleep(0.5)
+    tomoko.jarvis.arm_controller.joint_control([0] * 6)
+    time.sleep(5)
+    tomoko.jarvis.arm_controller.joint_control([-25, 10, -10, 0, 30, 0])
+    time.sleep(0.5)
+    tomoko.detect_teapot()
+    tomoko.drop_water()
+    tomoko.jarvis.arm_controller.joint_control([-25, 10, -10, 0, 30, 0])
+    time.sleep(0.5)
+    tomoko.detect_teapot()
+    tomoko.wash_teapot()
+
 
 
 if __name__ == '__main__':
@@ -583,6 +609,6 @@ if __name__ == '__main__':
     # test_wash_teapot()
     # time.sleep(15)
     A = time.time()
-    test_detect_can_and_cover()
-    B = time.time()
+    # execute()
+    execute()
     print("time xxx = ", B - A)
