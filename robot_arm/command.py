@@ -31,7 +31,7 @@ class BottomTurnCommand(Command):
 
     def undo(self):
         flag = self.arm_controller.bottom_turn(-self.angle)
-        time.sleep(2)
+        time.sleep(2.5)
         return flag
 
     def __str__(self):
@@ -59,10 +59,14 @@ class LiftMoveCommand(Command):
         self.height = args[0]
 
     def execute(self):
-        return self.arm_controller.lift(self.height)
+        flag = self.arm_controller.lift(self.height)
+        time.sleep(0.5)
+        return flag
 
     def undo(self):
-        return self.arm_controller.lift(-self.height)
+        flag = self.arm_controller.lift(-self.height)
+        time.sleep(0.5)
+        return flag
 
     def __str__(self):
         return f"Command(Lift) - {self.height} mm"
@@ -120,13 +124,17 @@ class EndPoseMoveCommand(Command):
 
     def execute(self):
         self.last_end_pose = self.arm_controller.end_pose_state()
+        time.sleep(0.1)
         flag = self.arm_controller.end_pose_control(self.end_pose, self.move_mode, self.move_speed_rate)
+        if self.move_mode == 0x2:
+            time.sleep(3)
         time.sleep(0.1)
         return flag
 
     def undo(self):
         flag = self.arm_controller.end_pose_control(self.last_end_pose, self.move_mode, self.move_speed_rate)
-        time.sleep(0.1)
+        if self.move_mode == 0x2:
+            time.sleep(3)
         return flag
 
     def __str__(self):
@@ -187,17 +195,19 @@ class GripperCommand(Command):
 
 
 class HeadUpCommand(Command):
-    def __init__(self, tomoko):
+    def __init__(self, tomoko, degree=10):
         super().__init__(tomoko)
+        self.degree = degree
 
     def execute(self):
         joints = self.arm_controller.joint_state()
-        joints[0] -= 10
+        joints[1] -= self.degree
         flag = self.arm_controller.joint_control(joints)
+        time.sleep(1)
         return flag
 
     def undo(self):
         joints = self.arm_controller.joint_state()
-        joints[0] += 10
+        joints[1] += self.degree
         flag = self.arm_controller.joint_control(joints)
         return flag
